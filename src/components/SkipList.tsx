@@ -10,6 +10,46 @@ const SkipListComponent: React.FC = () => {
     const [benchmarkLinear, setBenchmarkLinear] = useState<string>("");
     const [elements, setElements] = useState<{ value: number; level: number }[]>([]);
 
+    const exportToJson = () => {
+        const jsonData = JSON.stringify({
+            totalElements: elements.length, // Apenas o número total de elementos
+            searchResult, 
+            benchmark,
+            benchmarkLinear: benchmarkLinear ? benchmarkLinear : "Não testado"
+        }, null, 2); // Formata o JSON com indentação de 2 espaços para melhor legibilidade
+    
+        const blob = new Blob([jsonData], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+    
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "skip_list_data.json";
+        a.click();
+    
+        URL.revokeObjectURL(url);
+    };
+
+    const exportCsv = () => {
+        const csvRows = [
+            ["Total de Elementos", "Resultado da Busca", "Tempo (Skip List)", "Tempo (Busca Linear)"],
+            [elements.length, searchResult || "N/A", benchmark || "N/A", benchmarkLinear || "N/A"]
+        ];
+    
+        const csvContent = csvRows
+            .map(row => row.map(value => `"${value}"`).join(";")) // Separador `;` ao invés de `,`
+            .join("\r\n"); // Usa `\r\n` para compatibilidade com Windows e Excel
+    
+        const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+    
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "skip_list_data.csv";
+        a.click();
+    
+        URL.revokeObjectURL(url);
+    };  
+
     const updateElements = () => {
         const values = list.getValues().map(value => ({
             value,
@@ -97,6 +137,13 @@ const SkipListComponent: React.FC = () => {
                 <button onClick={generateRandomList} className="bg-purple-500 text-white px-3 py-1 rounded">
                     Gerar Novamente
                 </button>
+                <button onClick={exportToJson} className="bg-blue-700 text-white px-3 py-1 rounded">
+                    Exportar JSON
+                </button>
+                <button onClick={exportCsv} className="bg-green-500 text-white px-3 py-1 rounded">
+                     Exportar CSV
+                </button>
+                
             </div>
             <div className="mb-3">
                 <strong>Resultado:</strong> {searchResult}

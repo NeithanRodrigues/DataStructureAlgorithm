@@ -25,6 +25,45 @@ const BSTComponent: FC = () => {
 
     const NODE_RADIUS = 20;
 
+    const exportToJson = (): void => {
+        const value = parseInt(inputValue, 10);
+        if (isNaN(value)) {
+            setMessage("Please enter a valid number to search.");
+            return;
+        }
+    
+        const foundNode = bstInstance.search(value);
+    
+        const searchResult = {
+            searchedValue: value,
+            found: !!foundNode,
+        };
+    
+        const jsonBlob = new Blob([JSON.stringify(searchResult, null, 2)], { type: "application/json" });
+        const downloadLink = document.createElement("a");
+        downloadLink.href = URL.createObjectURL(jsonBlob);
+        downloadLink.download = `search_result_${value}.json`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    
+        setMessage(`Search result exported for number ${value}.`);
+    };
+    
+    const exportToCsv = (value: number, found: boolean): void => {
+        const csvContent = `Searched Value,Found\n${value},${found ? "Yes" : "No"}`;
+    
+        const csvBlob = new Blob([csvContent], { type: "text/csv" });
+        const downloadLink = document.createElement("a");
+        downloadLink.href = URL.createObjectURL(csvBlob);
+        downloadLink.download = `search_result_${value}.csv`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    
+        setMessage(`Search result exported for number ${value}.`);
+    };
+
     const convertToTreeFormat = (node: TreeNode | null): TreeDataNode | null => {
         if (!node) return null;
 
@@ -136,6 +175,14 @@ const BSTComponent: FC = () => {
                 <button onClick={handleAdd} className="bg-green-500 text-white px-4 py-2 rounded">Add</button>
                 <button onClick={handleSearch} className="bg-yellow-500 text-white px-4 py-2 rounded">Search</button>
                 <button onClick={handleRemove} className="bg-red-500 text-white px-4 py-2 rounded">Remove</button>
+                <button onClick={exportToJson} className="bg-yellow-500 text-white px-4 py-2 rounded">
+                    JSON
+                </button>
+                <button onClick={() => exportToCsv(parseInt(inputValue, 10), !!bstInstance.search(parseInt(inputValue, 10)))}
+                    className="bg-blue-500 text-white px-4 py-2 rounded">
+                    Export to CSV
+                </button>
+
             </div>
             {message && <p className="mb-4 text-sm text-gray-700">{message}</p>}
             <div style={{ width: "100%", height: "500px" }}>

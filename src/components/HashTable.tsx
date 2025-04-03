@@ -253,6 +253,50 @@ const HashTableComponent: FC = () => {
         return colors[index % colors.length];
     };
 
+    const exportToJson = () => {
+        const exportData = {
+            tableSize,
+            buckets: visualizationData.buckets.map((bucket) => ({
+                index: bucket.index,
+                nodes: bucket.nodes.map((node) => ({
+                    key: node.key,
+                    value: node.value,
+                    highlight: node.highlight,
+                })),
+            })),
+            stats: visualizationData.stats,
+        };
+    
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+            type: "application/json",
+        });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "hashTableExport.json";
+        link.click();
+    };
+
+    const exportToCsv = () => {
+        const headers = ["Key", "Value"];
+        const rows = visualizationData.buckets.flatMap((bucket) =>
+            bucket.nodes.map((node) => [node.key, node.value])
+        );
+    
+        const csvContent = [
+            headers.join(","),
+            ...rows.map((row) => row.join(",")),
+        ].join("\n");
+    
+        const blob = new Blob([csvContent], {
+            type: "text/csv;charset=utf-8;",
+        });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "hashTableExport.csv";
+        link.click();
+    };
+    
+
     const getLoadFactorStatus = (): { color: string; message: string } => {
         const loadFactor = visualizationData.stats.loadFactor;
         if (loadFactor < 0.5) return { color: "bg-green-500", message: "Good" };
@@ -317,6 +361,17 @@ const HashTableComponent: FC = () => {
                             >
                                 Clear All
                             </button>
+                            <button
+                                onClick={exportToJson}
+                                className="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2 rounded-md font-medium transition duration-150 ease-in-out shadow-sm hover:shadow-md">
+                                JSON
+                            </button>
+                            <button
+                                onClick={exportToCsv}
+                                className="bg-green-500 hover:bg-green-600 text-white px-5 py-2 rounded-md font-medium transition duration-150 ease-in-out shadow-sm hover:shadow-md">
+                                Export to CSV
+                            </button>
+
                         </div>
                     </div>
 

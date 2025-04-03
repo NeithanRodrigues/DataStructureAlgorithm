@@ -9,6 +9,68 @@ const LinkedListComponent: React.FC = () => {
     const [elements, setElements] = useState<number[]>([]);
     const [benchmark, setBenchmark] = useState<string>("");
 
+    const exportCsv = () => {
+        const headers = "tipo,numero,encontrado,tempo_execucao_ms\n";
+        
+        const data = [
+            ["Desotimizado", inputValue ? parseInt(inputValue) : "", searchResult.includes("Encontrado"), benchmark ? parseFloat(benchmark.match(/[\d.]+/g)?.[0] || "0") : 0],
+            ["MTF", inputValue ? parseInt(inputValue) : "", searchResult.includes("Encontrado"), benchmark ? parseFloat(benchmark.match(/[\d.]+/g)?.[0] || "0") : 0],
+            ["Transposicao", inputValue ? parseInt(inputValue) : "", searchResult.includes("Encontrado"), benchmark ? parseFloat(benchmark.match(/[\d.]+/g)?.[0] || "0") : 0]
+        ];
+    
+        const csvContent = headers + data.map(row => row.join(",")).join("\n");
+    
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+    
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "search_results.csv";
+        a.click();
+    
+        URL.revokeObjectURL(url);
+    };    
+
+    const exportToJson = () => {
+        const jsonData = {
+            buscas: [
+                {
+                    tipo: "Desotimizado",
+                    numero: inputValue ? parseInt(inputValue) : null,
+                    encontrado: searchResult.includes("Encontrado"),
+                    tempo_execucao_ms: benchmark ? parseFloat(benchmark.match(/[\d.]+/g)?.[0] || "0") : 0
+                },
+                {
+                    tipo: "MTF",
+                    numero: inputValue ? parseInt(inputValue) : null,
+                    encontrado: searchResult.includes("Encontrado"),
+                    tempo_execucao_ms: benchmark ? parseFloat(benchmark.match(/[\d.]+/g)?.[0] || "0") : 0
+                },
+                {
+                    tipo: "Transposicao",
+                    numero: inputValue ? parseInt(inputValue) : null,
+                    encontrado: searchResult.includes("Encontrado"),
+                    tempo_execucao_ms: benchmark ? parseFloat(benchmark.match(/[\d.]+/g)?.[0] || "0") : 0
+                }
+            ]
+        };
+    
+        const jsonString = JSON.stringify(jsonData, null, 2);
+        const blob = new Blob([jsonString], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+    
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "search_results.json";
+        a.click();
+    
+        URL.revokeObjectURL(url);
+    };
+    
+    
+    
+    
+
     // Atualiza a exibição da lista
     const updateElements = () => {
         const newElements: number[] = [];
@@ -107,6 +169,12 @@ const LinkedListComponent: React.FC = () => {
                 <button onClick={handleSearchTranspose} className="bg-yellow-500 text-white px-3 py-1 rounded">Buscar (Transposição)</button>
                 <button onClick={handleClearList} className="bg-red-500 text-white px-3 py-1 rounded">Apagar Tudo</button>
                 <button onClick={handleGenerateNewList} className="bg-purple-500 text-white px-3 py-1 rounded">Gerar Novamente</button>
+                <button onClick={exportToJson} className="bg-blue-500 text-white px-3 py-1 rounded">
+                    Exportar JSON
+                </button>
+                <button onClick={exportCsv} className="bg-green-500 text-white px-3 py-1 rounded">
+                    Exportar CSV
+                </button>
             </div>
             <div className="mb-3">
                 <strong>Resultado:</strong> {searchResult}
