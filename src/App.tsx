@@ -3,6 +3,7 @@ import HeadBar from './components/HeadBar'
 import NavBar from './components/NavBar'
 import BSTComponent from './components/BstTree'
 import LinkedList from './components/LinkedList'
+import SkipListVisualizer  from './components/SkipList';
 
 function App() {
 
@@ -10,7 +11,7 @@ function App() {
     <>
       <HeadBar />
       <NavBar />
-      <LinkedList />
+      <SkipListVisualizer />
     </>
   )
 }

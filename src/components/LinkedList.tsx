@@ -24,7 +24,7 @@ const LinkedListComponent: React.FC = () => {
         list.clear(); // Limpa a lista antes de gerar nova
         const uniqueNumbers = new Set<number>();
 
-        while (uniqueNumbers.size < 5000) { // Garante que sejam gerados 12 números únicos
+        while (uniqueNumbers.size < 10000) { // Garante que sejam gerados 12 números únicos
             const randomNum = Math.floor(Math.random() * 10000);
             uniqueNumbers.add(randomNum);
         }
