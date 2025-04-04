@@ -2,13 +2,13 @@
 
 // --- Enums for Strategies ---
 export enum HashingStrategy {
-    Simple = "SIMPLE", // Current method
+    Simple = "SIMPLE",
     Universal = "UNIVERSAL",
-    // Perfect hashing is complex, especially dynamic. We'll add a note about it.
+    // Perfect hashing is complex, especially dynamic.
 }
 
 export enum CollisionResolution {
-    Chaining = "CHAINING", // Current method
+    Chaining = "CHAINING",
     LinearProbing = "LINEAR_PROBING",
     DoubleHashing = "DOUBLE_HASHING",
 }
@@ -18,8 +18,8 @@ export enum CollisionResolution {
 class HashTableNode {
     key: string;
     value: string;
-    // Add state for probing strategies (e.g., occupied, deleted)
-    // Alternatively, use null/special markers in the bucket array itself
+    // No extra state needed here; handled by bucket structure or DELETED_MARKER
+
     constructor(key: string, value: string) {
         this.key = key;
         this.value = value;
@@ -29,60 +29,90 @@ class HashTableNode {
 // Special marker for deleted slots in probing
 export const DELETED_MARKER = { key: "__DELETED__", value: "__DELETED__" };
 
+// Type alias for bucket content in probing strategies
+type ProbingBucketEntry = HashTableNode | null | typeof DELETED_MARKER;
+
+// Type alias for the result of the internal find slot helper
+type FindSlotResult = {
+    found: boolean; // Was the exact key found?
+    index: number; // Index where key was found, OR first available (null/deleted) slot if not found
+    probes: number;
+    probeSequence: number[];
+};
+
 // --- Main HashTable Class ---
 export class HashTable {
-    private buckets: Array<
-        HashTableNode[] | (HashTableNode | null | typeof DELETED_MARKER)
-    >; // Type depends on strategy
-    private size: number;
+    // Use a more specific union type based on the collision strategy
+    private buckets: Array<HashTableNode[]> | Array<ProbingBucketEntry>;
+    private size: number; // Actual size of the bucket array (should ideally be prime for probing)
+    private tableSize: number; // Stores the effective size used for hashing calculations (prime for probing)
     private hashingStrategy: HashingStrategy;
     private collisionResolution: CollisionResolution;
-    private itemCount: number = 0; // Track items for load factor in probing
+    private itemCount: number = 0; // Track active items for load factor
 
     // Universal Hashing parameters
-    private universal_p: number = 0; // Large prime
-    private universal_a: number = 0; // Random 1 <= a < p
-    private universal_b: number = 0; // Random 0 <= b < p
+    // Initialize with a default large prime to avoid issues if Universal isn't selected initially
+    // but keyToInteger is called (e.g., for DoubleHashing)
+    private universal_p: number = 10000019; // A reasonably large prime
+    private universal_a: number = 1; // Default values
+    private universal_b: number = 0; // Default values
 
     // Double Hashing prime (R)
-    private double_hashing_R: number = 0; // Prime smaller than size
+    private double_hashing_R: number = 1; // Default/fallback value
 
     constructor(
-        size: number = 10,
+        requestedSize: number = 10,
         hashing: HashingStrategy = HashingStrategy.Simple,
         collision: CollisionResolution = CollisionResolution.Chaining
     ) {
-        this.size = Math.max(1, size); // Ensure size is at least 1
+        this.size = Math.max(1, requestedSize); // User requested size
         this.hashingStrategy = hashing;
         this.collisionResolution = collision;
-        this.initializeBuckets();
         this.itemCount = 0;
 
+        // For probing strategies, especially Double Hashing, ensure table size is prime
+        if (
+            this.collisionResolution === CollisionResolution.LinearProbing ||
+            this.collisionResolution === CollisionResolution.DoubleHashing
+        ) {
+            this.tableSize = this.findNextPrime(this.size);
+            console.log(
+                `Requested size ${this.size}, using prime table size ${this.tableSize} for probing.`
+            );
+        } else {
+            this.tableSize = this.size; // Chaining doesn't strictly need prime size
+        }
+
+        // Initialize parameters based on strategies *after* tableSize is set
         if (this.hashingStrategy === HashingStrategy.Universal) {
-            this.generateUniversalParams();
+            this.generateUniversalParams(); // Uses this.tableSize implicitly via keyToInteger potentially
         }
         if (this.collisionResolution === CollisionResolution.DoubleHashing) {
-            this.setDoubleHashingR();
+            this.setDoubleHashingR(); // Uses this.tableSize
         }
+
+        this.initializeBuckets();
     }
 
     // --- Bucket Initialization based on Strategy ---
     private initializeBuckets(): void {
         if (this.collisionResolution === CollisionResolution.Chaining) {
-            this.buckets = Array(this.size)
+            // Size here should be the original requested size or adjusted tableSize?
+            // Let's use tableSize for consistency, though chaining often uses requested size directly.
+            this.buckets = Array(this.tableSize)
                 .fill(null)
                 .map(() => []);
         } else {
-            // Linear Probing or Double Hashing
-            this.buckets = Array(this.size).fill(null);
+            // Linear Probing or Double Hashing use the (potentially prime) tableSize
+            this.buckets = Array(this.tableSize).fill(null);
         }
-        this.itemCount = 0;
+        this.itemCount = 0; // Reset count on initialization
         console.log(
-            `Initialized buckets for ${this.collisionResolution}, size ${this.size}`
+            `Initialized buckets for ${this.collisionResolution}, table size ${this.tableSize}`
         );
     }
 
-    // --- Parameter Generation ---
+    // --- Parameter Generation & Prime Helpers ---
     private isPrime(num: number): boolean {
         if (num <= 1) return false;
         if (num <= 3) return true;
@@ -93,36 +123,44 @@ export class HashTable {
         return true;
     }
 
+    // Finds the smallest prime >= num
     private findNextPrime(num: number): number {
-        if (num <= 1) return 2;
+        if (num <= 2) return 2;
         let prime = num;
-        let found = false;
-        while (!found) {
-            prime++;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
             if (this.isPrime(prime)) {
-                found = true;
+                return prime;
+            }
+            prime++;
+            // Add a safety break for extremely large loops, though unlikely
+            if (prime > num * 2 && prime > 1000000) {
+                console.warn(
+                    "Prime search exceeded reasonable limits, returning input*2"
+                );
+                return num * 2; // Fallback
             }
         }
-        return prime;
     }
 
+    // Finds the largest prime < num
     private findPrevPrime(num: number): number {
-        if (num <= 2) return 1; // Needs careful handling if size is tiny
-        let prime = num;
-        let found = false;
-        while (!found && prime > 1) {
-            prime--;
+        if (num <= 2) return 1; // No prime < 2, return 1 as special case for R calculation
+        let prime = num - 1; // Start checking below num
+        while (prime > 1) {
             if (this.isPrime(prime)) {
-                found = true;
+                return prime;
             }
+            prime--;
         }
-        return prime > 1 ? prime : 1; // Return 1 if no smaller prime found
+        return 1; // Return 1 if no smaller prime found (e.g., input was 2 or 3)
     }
 
     private generateUniversalParams(): void {
-        // Find a prime p larger than typical hash values (e.g., > size * 255 * key_length)
-        // For simplicity, let's pick a reasonably large prime.
-        this.universal_p = this.findNextPrime(this.size * 100); // Adjust multiplier as needed
+        // P should be larger than the max possible integer key value.
+        // Since keyToInteger uses modulo P, let's choose P based on tableSize.
+        // Choosing a prime larger than tableSize is key.
+        this.universal_p = this.findNextPrime(this.tableSize * 100); // Or a larger factor/fixed large prime
         this.universal_a =
             Math.floor(Math.random() * (this.universal_p - 1)) + 1; // 1 <= a < p
         this.universal_b = Math.floor(Math.random() * this.universal_p); // 0 <= b < p
@@ -132,102 +170,117 @@ export class HashTable {
     }
 
     private setDoubleHashingR(): void {
-        this.double_hashing_R = this.findPrevPrime(this.size);
-        if (this.double_hashing_R === 0) {
-            // Fallback if size is too small (e.g., 1 or 2)
-            this.double_hashing_R = 1;
+        // R must be prime and less than the table size (m).
+        // R must also be > 0.
+        this.double_hashing_R = this.findPrevPrime(this.tableSize);
+        // Note: If tableSize is 2 or 3, findPrevPrime returns 1.
+        // This causes hash2 to always return 1, degrading to linear probing. This is expected.
+        if (this.double_hashing_R <= 0) {
+            console.warn(
+                `Could not find suitable prime R < ${this.tableSize}. Using fallback R=1.`
+            );
+            this.double_hashing_R = 1; // Fallback to prevent issues, effectively linear probing step 1
         }
-        console.log(`Double Hashing R set to: ${this.double_hashing_R}`);
+        console.log(
+            `Double Hashing R set to: ${this.double_hashing_R} (for table size ${this.tableSize})`
+        );
     }
 
     // --- Key to Integer Conversion ---
     private keyToInteger(key: string): number {
         let hashValue = 0;
+        // Use a large prime (universal_p seems reasonable, ensure it's non-zero)
+        // or another large fixed prime if universal hashing isn't active.
+        const modulus = this.universal_p > 1 ? this.universal_p : 10000019; // Use default if universal_p wasn't set
         for (let i = 0; i < key.length; i++) {
-            // Simple sum of char codes (can be improved)
-            hashValue = (hashValue * 31 + key.charCodeAt(i)) % this.universal_p; // Use universal_p to keep within range
+            // Polynomial rolling hash is common (using 31 as prime base)
+            hashValue = (hashValue * 31 + key.charCodeAt(i)) % modulus;
         }
-        return Math.abs(hashValue); // Ensure positive
+        // Ensure positive, although modulo should handle it if modulus is positive
+        return Math.abs(hashValue);
     }
 
     // --- Hashing Functions ---
+
+    // Primary hash function h1(key)
     hash(key: string): {
-        finalHash: number;
+        initialIndex: number; // Renamed from finalHash for clarity before probing
         steps?: Array<{
             char: string;
             code: number;
             position: number;
             subtotal: number;
         }>; // Optional steps for simple hash
-        probes?: number; // Number of probes for probing strategies
-        probeSequence?: number[]; // Sequence of probed indices
     } {
         const hashDetails: {
-            finalHash: number;
+            initialIndex: number;
             steps?: any[];
-            probes?: number;
-            probeSequence?: number[];
-        } = { finalHash: -1 }; // Initialize finalHash
+        } = { initialIndex: -1 };
 
         let index: number;
+        const m = this.tableSize; // Use the actual table size for modulo
 
         if (this.hashingStrategy === HashingStrategy.Simple) {
-            let hashValue = 0;
+            // Simple (and often poor) hash: sum of weighted char codes
+            let simpleHashValue = 0;
             const steps = [];
             for (let i = 0; i < key.length; i++) {
                 const char = key[i];
                 const charCode = key.charCodeAt(i);
                 const position = i + 1;
-                const contribution = charCode * position; // Simple weighted sum
-                hashValue += contribution;
+                const contribution = charCode * position;
+                simpleHashValue += contribution;
                 steps.push({
                     char,
                     code: charCode,
                     position,
-                    subtotal: hashValue,
+                    subtotal: simpleHashValue,
                 });
             }
-            index = Math.abs(hashValue) % this.size;
+            // Ensure positive index in [0, m-1]
+            index = ((simpleHashValue % m) + m) % m;
             hashDetails.steps = steps;
-            hashDetails.finalHash = index; // Assign finalHash here
+            hashDetails.initialIndex = index;
         } else if (this.hashingStrategy === HashingStrategy.Universal) {
             const k = this.keyToInteger(key);
-            if (this.universal_p === 0) this.generateUniversalParams(); // Regenerate if needed
+            // Ensure params are valid (should be done in constructor/setStrategies)
+            if (this.universal_p <= 1 || this.universal_a < 1) {
+                console.warn(
+                    "Universal hashing parameters seem invalid, regenerating."
+                );
+                this.generateUniversalParams(); // Attempt to fix if called unexpectedly
+            }
             // Formula: ((a*k + b) mod p) mod m
-            index =
-                ((this.universal_a * k + this.universal_b) % this.universal_p) %
-                this.size;
-            index = Math.abs(index); // Ensure positive index
-            hashDetails.finalHash = index; // Assign finalHash here
+            const hashValue =
+                (this.universal_a * k + this.universal_b) % this.universal_p;
+            index = ((hashValue % m) + m) % m; // Ensure positive index in [0, m-1]
+            hashDetails.initialIndex = index;
             // Steps for universal hashing are less intuitive to show simply
         } else {
             // Default or unknown strategy, fallback to simple
             console.warn("Unknown hashing strategy, defaulting to Simple.");
-            const simpleHashResult = this.hashSimpleInternal(key);
-            index = simpleHashResult.finalHash;
+            const simpleHashResult = this.hashSimpleInternal(key); // Use helper
+            index = simpleHashResult.initialIndex;
             hashDetails.steps = simpleHashResult.steps;
-            hashDetails.finalHash = index; // Assign finalHash here
+            hashDetails.initialIndex = index;
         }
 
-        // Note: The 'finalHash' here is the *initial* index before probing.
-        // The actual final location might differ with probing.
-        // We'll add probe info in the set/get/remove methods.
-        if (hashDetails.finalHash === -1) {
+        if (hashDetails.initialIndex === -1) {
             console.error("Failed to calculate hash index for key:", key);
-            // Provide a fallback or throw error, e.g., default to 0
-            hashDetails.finalHash = 0;
+            hashDetails.initialIndex = 0; // Fallback to 0
         }
 
         return hashDetails;
     }
 
-    // Helper for default case in hash method
+    // Helper for default/simple case in hash method
     private hashSimpleInternal(key: string): {
-        finalHash: number;
+        initialIndex: number;
         steps: any[];
     } {
         let hashValue = 0;
         const steps = [];
+        const m = this.tableSize;
         for (let i = 0; i < key.length; i++) {
             const char = key[i];
             const charCode = key.charCodeAt(i);
@@ -236,21 +289,99 @@ export class HashTable {
             hashValue += contribution;
             steps.push({ char, code: charCode, position, subtotal: hashValue });
         }
-        const finalHash = Math.abs(hashValue) % this.size;
-        return { finalHash, steps };
+        const initialIndex = ((hashValue % m) + m) % m; // Ensure positive index in [0, m-1]
+        return { initialIndex, steps };
     }
 
-    // --- Second Hash Function for Double Hashing ---
+    // --- Second Hash Function h2(key) for Double Hashing ---
     private hash2(key: string): number {
-        if (this.double_hashing_R === 0) {
-            console.warn("Double Hashing R is 0, using fallback step 1");
-            return 1; // Cannot be 0
+        // R must be prime, R < tableSize, R > 0.
+        // hash2(k) must never be 0.
+        // Common choice: R - (k mod R)
+        if (this.double_hashing_R <= 0) {
+            console.warn(
+                `Double Hashing R is invalid (${this.double_hashing_R}), using fallback step 1.`
+            );
+            return 1; // Must return > 0
         }
-        // Common second hash: R - (key % R) where R is prime < size
         const k = this.keyToInteger(key);
         const step = this.double_hashing_R - (k % this.double_hashing_R);
-        // Ensure step is at least 1, even if R is 1
-        return Math.max(1, step);
+
+        // Ensure step > 0. If k % R is 0, step would be R. If R=1, k%R=0, step=1.
+        // The formula naturally gives a step in [1, R]. Since R < tableSize, step < tableSize.
+        // If tableSize is prime, gcd(step, tableSize) is likely 1.
+        // If R=1 (for tableSize 2 or 3), step is always 1.
+        return step; // No need for Math.max(1, step) here due to formula properties
+    }
+
+    // --- Refactored Probing Helper ---
+    private _findSlot(key: string): FindSlotResult {
+        const { initialIndex } = this.hash(key);
+        let probes = 0;
+        const probeSequence: number[] = [];
+        let firstAvailableIndex = -1; // Track first deleted or null slot
+
+        const m = this.tableSize;
+        const probingBuckets = this.buckets as Array<ProbingBucketEntry>;
+
+        let step = 1; // Default step for Linear Probing
+        if (this.collisionResolution === CollisionResolution.DoubleHashing) {
+            step = this.hash2(key);
+            if (step <= 0 || step >= m) {
+                console.error(
+                    `Invalid step ${step} from hash2 for key ${key}. Defaulting to 1.`
+                );
+                step = 1; // Safety check
+            }
+        }
+
+        for (let i = 0; i < m; i++) {
+            // Probe at most m times
+            // Calculate index for this probe using robust modulo
+            const probeIndex = (((initialIndex + i * step) % m) + m) % m;
+            probes++;
+            probeSequence.push(probeIndex);
+
+            const currentNode = probingBuckets[probeIndex];
+
+            if (currentNode === null) {
+                // Found empty slot - key is not present beyond this point.
+                if (firstAvailableIndex === -1) {
+                    firstAvailableIndex = probeIndex; // This is the first available spot
+                }
+                return {
+                    found: false,
+                    index: firstAvailableIndex, // Return first available (which is this one)
+                    probes,
+                    probeSequence,
+                };
+            } else if (currentNode === DELETED_MARKER) {
+                // Found deleted slot - store it as potential insertion point, but continue search for key
+                if (firstAvailableIndex === -1) {
+                    firstAvailableIndex = probeIndex;
+                }
+                // Continue probing
+            } else if (currentNode.key === key) {
+                // Found the actual key
+                return {
+                    found: true,
+                    index: probeIndex, // Return index where key was found
+                    probes,
+                    probeSequence,
+                };
+            }
+            // Else: Collision with a different key, continue probing
+        }
+
+        // If loop finishes, table is full or only deleted slots were found after starting point
+        // If firstAvailableIndex was found, return it for potential insertion (set operation)
+        // Otherwise, the table is truly full for this probe sequence.
+        return {
+            found: false,
+            index: firstAvailableIndex !== -1 ? firstAvailableIndex : -1, // -1 indicates table full or cycle without empty/deleted
+            probes,
+            probeSequence,
+        };
     }
 
     // --- Core Operations (Set, Get, Remove) ---
@@ -261,33 +392,35 @@ export class HashTable {
     ): {
         hashInfo: ReturnType<typeof this.hash>;
         isUpdate: boolean;
-        finalIndex: number; // Actual index where inserted/updated
-        probes?: number;
-        probeSequence?: number[];
+        finalIndex: number; // Actual index where inserted/updated, -1 if failed
+        probes: number;
+        probeSequence: number[];
     } {
-        const hashInfo = this.hash(key);
-        let initialIndex = hashInfo.finalHash;
+        const hashInfo = this.hash(key); // Get initial hash info (e.g., simple steps)
         let isUpdate = false;
         let finalIndex = -1;
         let probes = 0;
-        const probeSequence: number[] = [];
+        let probeSequence: number[] = [];
 
         switch (this.collisionResolution) {
             case CollisionResolution.Chaining: {
+                const { initialIndex } = hashInfo;
                 const bucket = this.buckets[initialIndex] as HashTableNode[];
                 finalIndex = initialIndex; // For chaining, index is fixed
-                probeSequence.push(initialIndex);
+                probeSequence.push(initialIndex); // Only "probe" is the bucket index
+
                 for (let i = 0; i < bucket.length; i++) {
                     if (bucket[i].key === key) {
                         bucket[i].value = value; // Update existing
                         isUpdate = true;
+                        // probes counts comparisons within chain maybe? Let's keep it 0 for consistency with probing def.
                         return {
                             hashInfo,
                             isUpdate,
                             finalIndex,
-                            probes,
+                            probes: bucket.length,
                             probeSequence,
-                        };
+                        }; // probes = chain length
                     }
                 }
                 // Insert new node
@@ -297,80 +430,70 @@ export class HashTable {
                     hashInfo,
                     isUpdate,
                     finalIndex,
-                    probes,
+                    probes: bucket.length,
                     probeSequence,
-                }; // probes = 0 for chaining
+                }; // probes = new chain length
             }
 
             case CollisionResolution.LinearProbing:
             case CollisionResolution.DoubleHashing: {
+                // Check load factor before finding slot
                 if (this.getLoadFactor() >= 0.7) {
-                    // Resize threshold for probing
+                    // Recommended threshold for probing
                     console.warn(
                         `Load factor ${this.getLoadFactor().toFixed(
                             2
-                        )} >= 0.7, consider resizing.`
+                        )} >= 0.7. Resize recommended before inserting '${key}'.`
+                        // Consider triggering resize automatically here or throwing error if desired
                     );
-                    // Optionally trigger resize here, but let's keep it manual for the example
+                    // Maybe throw an error if strictly enforcing load factor?
+                    // throw new Error(`Load factor too high (${this.getLoadFactor()})`);
                 }
 
-                let step = 1; // Default for Linear Probing
-                if (
-                    this.collisionResolution ===
-                    CollisionResolution.DoubleHashing
-                ) {
-                    step = this.hash2(key);
-                }
+                const result = this._findSlot(key);
+                probes = result.probes;
+                probeSequence = result.probeSequence;
+                const probingBuckets = this
+                    .buckets as Array<ProbingBucketEntry>;
 
-                let currentIndex = initialIndex;
-                for (let i = 0; i < this.size; i++) {
-                    probes++;
-                    probeSequence.push(currentIndex);
-                    const bucket = this.buckets as Array<
-                        HashTableNode | null | typeof DELETED_MARKER
-                    >;
-                    const currentNode = bucket[currentIndex];
-
-                    if (
-                        currentNode === null ||
-                        currentNode === DELETED_MARKER
-                    ) {
-                        // Found empty or deleted slot, insert here
-                        bucket[currentIndex] = new HashTableNode(key, value);
+                if (result.found) {
+                    // Key already exists, update it
+                    finalIndex = result.index;
+                    probingBuckets[finalIndex] = new HashTableNode(key, value); // Replace node
+                    isUpdate = true;
+                    // Item count doesn't change on update
+                } else {
+                    // Key not found, insert at first available slot (null or deleted)
+                    if (result.index !== -1) {
+                        // Check if an available slot was found
+                        finalIndex = result.index;
+                        // Check if we are replacing a DELETED_MARKER or null
+                        const wasDeleted =
+                            probingBuckets[finalIndex] === DELETED_MARKER;
+                        probingBuckets[finalIndex] = new HashTableNode(
+                            key,
+                            value
+                        );
+                        isUpdate = false;
+                        // Only increment itemCount if we are filling a truly empty (null) or deleted slot
+                        // If it was deleted, it wasn't counted, so increment. If null, also increment.
                         this.itemCount++;
-                        finalIndex = currentIndex;
-                        return {
-                            hashInfo,
-                            isUpdate,
-                            finalIndex,
-                            probes,
-                            probeSequence,
-                        };
+                    } else {
+                        // No available slot found (table is full according to probe sequence)
+                        console.error(
+                            `Hash table full or probe cycle failed. Cannot insert key: ${key}`
+                        );
+                        // finalIndex remains -1
+                        throw new Error(`Hash table overflow for key '${key}'`);
                     }
-
-                    if (currentNode.key === key) {
-                        // Found the key, update value
-                        bucket[currentIndex] = new HashTableNode(key, value); // Replace node
-                        isUpdate = true;
-                        finalIndex = currentIndex;
-                        // Item count doesn't change on update
-                        return {
-                            hashInfo,
-                            isUpdate,
-                            finalIndex,
-                            probes,
-                            probeSequence,
-                        };
-                    }
-
-                    // Collision, calculate next index
-                    currentIndex = (initialIndex + i * step) % this.size;
-                    currentIndex = Math.abs(currentIndex); // Ensure positive
                 }
-
-                // Table is full
-                console.error("Hash table is full. Cannot insert key:", key);
-                throw new Error("Hash table overflow");
+                return {
+                    hashInfo,
+                    isUpdate,
+                    finalIndex,
+                    probes,
+                    probeSequence,
+                };
             }
 
             default:
@@ -382,96 +505,61 @@ export class HashTable {
         value: string | null;
         hashInfo: ReturnType<typeof this.hash>;
         finalIndex: number | null; // Actual index where found, null if not found
-        probes?: number;
-        probeSequence?: number[];
+        probes: number;
+        probeSequence: number[];
     } {
         const hashInfo = this.hash(key);
-        const initialIndex = hashInfo.finalHash;
+        let finalIndex: number | null = null;
         let probes = 0;
-        const probeSequence: number[] = [];
+        let probeSequence: number[] = [];
+        let value: string | null = null;
 
         switch (this.collisionResolution) {
             case CollisionResolution.Chaining: {
+                const { initialIndex } = hashInfo;
                 const bucket = this.buckets[initialIndex] as HashTableNode[];
-                probeSequence.push(initialIndex); // Only probe is the initial index
+                probeSequence.push(initialIndex); // Only probe is the bucket index
+
                 for (let i = 0; i < bucket.length; i++) {
-                    probes++; // Count comparisons within the chain as 'probes'
+                    // probes++; // Increment for each comparison in the chain
                     if (bucket[i].key === key) {
-                        return {
-                            value: bucket[i].value,
-                            hashInfo,
-                            finalIndex: initialIndex,
-                            probes,
-                            probeSequence,
-                        };
+                        value = bucket[i].value;
+                        finalIndex = initialIndex;
+                        probes = bucket.length; // Report chain length as probes
+                        break;
                     }
                 }
-                return {
-                    value: null,
-                    hashInfo,
-                    finalIndex: null,
-                    probes,
-                    probeSequence,
-                }; // Not found
+                return { value, hashInfo, finalIndex, probes, probeSequence }; // Not found if loop finishes
             }
 
             case CollisionResolution.LinearProbing:
             case CollisionResolution.DoubleHashing: {
-                let step = 1;
-                if (
-                    this.collisionResolution ===
-                    CollisionResolution.DoubleHashing
-                ) {
-                    step = this.hash2(key);
-                }
+                const result = this._findSlot(key);
+                probes = result.probes;
+                probeSequence = result.probeSequence;
 
-                let currentIndex = initialIndex;
-                for (let i = 0; i < this.size; i++) {
-                    probes++;
-                    probeSequence.push(currentIndex);
-                    const bucket = this.buckets as Array<
-                        HashTableNode | null | typeof DELETED_MARKER
-                    >;
-                    const currentNode = bucket[currentIndex];
-
-                    if (currentNode === null) {
-                        // Found empty slot, key cannot be further
-                        return {
-                            value: null,
-                            hashInfo,
-                            finalIndex: null,
-                            probes,
-                            probeSequence,
-                        };
+                if (result.found) {
+                    finalIndex = result.index;
+                    const node = (this.buckets as Array<ProbingBucketEntry>)[
+                        finalIndex
+                    ];
+                    // Type guard to be sure it's a node
+                    if (node && node !== DELETED_MARKER) {
+                        value = node.value;
+                    } else {
+                        // Should not happen if result.found is true, but good for robustness
+                        console.error(
+                            "Inconsistency: _findSlot reported found, but slot is not a valid node."
+                        );
+                        value = null;
+                        finalIndex = null;
                     }
-
-                    if (
-                        currentNode !== DELETED_MARKER &&
-                        currentNode.key === key
-                    ) {
-                        // Found the key
-                        return {
-                            value: currentNode.value,
-                            hashInfo,
-                            finalIndex: currentIndex,
-                            probes,
-                            probeSequence,
-                        };
-                    }
-
-                    // Continue probing (skip DELETED_MARKER)
-                    currentIndex = (initialIndex + i * step) % this.size;
-                    currentIndex = Math.abs(currentIndex); // Ensure positive
+                } else {
+                    // Key not found by _findSlot
+                    value = null;
+                    finalIndex = null;
                 }
-
-                // Cycled through table or hit only deleted markers after starting point
-                return {
-                    value: null,
-                    hashInfo,
-                    finalIndex: null,
-                    probes,
-                    probeSequence,
-                };
+                return { value, hashInfo, finalIndex, probes, probeSequence };
             }
 
             default:
@@ -482,74 +570,55 @@ export class HashTable {
     remove(key: string): {
         success: boolean;
         hashInfo: ReturnType<typeof this.hash>;
-        finalIndex: number | null; // Index where removed from, null if not found
-        probes?: number;
-        probeSequence?: number[];
+        finalIndex: number | null; // Index where removed from, null if not found/removed
+        probes: number;
+        probeSequence: number[];
     } {
         const hashInfo = this.hash(key);
-        const initialIndex = hashInfo.finalHash;
         let success = false;
         let finalIndex: number | null = null;
         let probes = 0;
-        const probeSequence: number[] = [];
+        let probeSequence: number[] = [];
 
         switch (this.collisionResolution) {
             case CollisionResolution.Chaining: {
+                const { initialIndex } = hashInfo;
                 const bucket = this.buckets[initialIndex] as HashTableNode[];
                 probeSequence.push(initialIndex);
+                const initialLength = bucket.length;
+
                 for (let i = 0; i < bucket.length; i++) {
-                    probes++; // Count comparisons
+                    // probes++;
                     if (bucket[i].key === key) {
                         bucket.splice(i, 1); // Remove from chain
                         success = true;
                         this.itemCount--;
                         finalIndex = initialIndex;
+                        probes = initialLength; // Report original chain length as probes?
                         break;
                     }
                 }
+                if (!success) probes = initialLength; // Report probes even if not found
                 return { success, hashInfo, finalIndex, probes, probeSequence };
             }
 
             case CollisionResolution.LinearProbing:
             case CollisionResolution.DoubleHashing: {
-                let step = 1;
-                if (
-                    this.collisionResolution ===
-                    CollisionResolution.DoubleHashing
-                ) {
-                    step = this.hash2(key);
-                }
+                const result = this._findSlot(key);
+                probes = result.probes;
+                probeSequence = result.probeSequence;
 
-                let currentIndex = initialIndex;
-                for (let i = 0; i < this.size; i++) {
-                    probes++;
-                    probeSequence.push(currentIndex);
-                    const bucket = this.buckets as Array<
-                        HashTableNode | null | typeof DELETED_MARKER
-                    >;
-                    const currentNode = bucket[currentIndex];
-
-                    if (currentNode === null) {
-                        // Found empty slot, key not present
-                        success = false;
-                        break;
-                    }
-
-                    if (
-                        currentNode !== DELETED_MARKER &&
-                        currentNode.key === key
-                    ) {
-                        // Found the key, mark as deleted
-                        bucket[currentIndex] = DELETED_MARKER;
-                        success = true;
-                        this.itemCount--;
-                        finalIndex = currentIndex;
-                        break; // Exit loop once found and removed
-                    }
-
-                    // Continue probing
-                    currentIndex = (initialIndex + i * step) % this.size;
-                    currentIndex = Math.abs(currentIndex); // Ensure positive
+                if (result.found) {
+                    // Key found at result.index, replace with DELETED_MARKER
+                    finalIndex = result.index;
+                    (this.buckets as Array<ProbingBucketEntry>)[finalIndex] =
+                        DELETED_MARKER;
+                    success = true;
+                    this.itemCount--; // Decrement active item count
+                } else {
+                    // Key not found
+                    success = false;
+                    finalIndex = null;
                 }
                 return { success, hashInfo, finalIndex, probes, probeSequence };
             }
@@ -561,91 +630,138 @@ export class HashTable {
 
     // --- Utility Methods ---
 
-    getBuckets(): Array<
-        HashTableNode[] | (HashTableNode | null | typeof DELETED_MARKER)
-    > {
+    getBuckets(): Array<HashTableNode[]> | Array<ProbingBucketEntry> {
         return this.buckets;
     }
 
     clear(): void {
-        this.initializeBuckets(); // Re-initialize based on current strategy
+        this.initializeBuckets(); // Re-initializes based on current strategy and size
     }
 
     getSize(): number {
-        return this.size;
+        return this.size; // Return the user-requested size
     }
 
-    // Needs careful implementation based on strategy
-    resize(newSizeInput: number): void {
-        const newSize = Math.max(1, newSizeInput); // Ensure new size is at least 1
-        console.log(`Resizing from ${this.size} to ${newSize}...`);
+    getTableSize(): number {
+        return this.tableSize; // Return the actual array size (potentially prime)
+    }
+
+    resize(newRequestedSizeInput: number): void {
+        const newRequestedSize = Math.max(1, newRequestedSizeInput);
+        const oldTableSize = this.tableSize;
+        console.log(
+            `Resizing requested from ${this.size} towards ${newRequestedSize} (current table size ${oldTableSize})...`
+        );
+
         const oldBuckets = this.buckets;
-        const oldSize = this.size;
-        const oldCollisionResolution = this.collisionResolution; // Store old strategy temporarily
+        const oldCollisionResolution = this.collisionResolution;
 
         // Store all valid old items
         const oldItems: HashTableNode[] = [];
         if (oldCollisionResolution === CollisionResolution.Chaining) {
             (oldBuckets as HashTableNode[][]).forEach((bucket) => {
-                bucket.forEach((node) => oldItems.push(node));
+                bucket.forEach((node) =>
+                    oldItems.push(new HashTableNode(node.key, node.value))
+                ); // Copy nodes
             });
         } else {
-            (
-                oldBuckets as Array<
-                    HashTableNode | null | typeof DELETED_MARKER
-                >
-            ).forEach((node) => {
+            (oldBuckets as Array<ProbingBucketEntry>).forEach((node) => {
                 if (node && node !== DELETED_MARKER) {
-                    oldItems.push(node);
+                    oldItems.push(new HashTableNode(node.key, node.value)); // Copy nodes
                 }
             });
         }
 
-        // Update size and re-initialize buckets for the *current* strategy
-        this.size = newSize;
-        // Re-calculate parameters dependent on size
-        if (this.hashingStrategy === HashingStrategy.Universal)
-            this.generateUniversalParams();
-        if (this.collisionResolution === CollisionResolution.DoubleHashing)
-            this.setDoubleHashingR();
-        this.initializeBuckets(); // Creates new empty buckets with the new size
+        // Update size parameters *before* initializing new buckets
+        this.size = newRequestedSize; // Store new requested size
+
+        // Determine new actual table size (prime if needed)
+        if (
+            this.collisionResolution === CollisionResolution.LinearProbing ||
+            this.collisionResolution === CollisionResolution.DoubleHashing
+        ) {
+            this.tableSize = this.findNextPrime(this.size);
+            console.log(
+                `New requested size ${this.size}, using new prime table size ${this.tableSize}.`
+            );
+        } else {
+            this.tableSize = this.size;
+        }
+
+        // Re-calculate parameters dependent on the *new* tableSize
+        // Note: Regenerating universal params might change hashes unpredictably if not desired.
+        // Usually, you keep the hash function stable unless explicitly changing strategy.
+        // Let's only regen if the strategy requires it and size changed significantly,
+        // or maybe just recalculate R for double hashing.
+        // if (this.hashingStrategy === HashingStrategy.Universal) this.generateUniversalParams(); // Re-randomize? Often not done on resize.
+        if (this.collisionResolution === CollisionResolution.DoubleHashing) {
+            this.setDoubleHashingR(); // R depends on the new tableSize
+        }
+
+        // Initialize new empty buckets with the new tableSize
+        this.initializeBuckets(); // This also resets itemCount to 0
 
         // Re-insert old items into the new table structure
-        console.log(`Rehashing ${oldItems.length} items...`);
+        console.log(`Rehashing ${oldItems.length} items into new table...`);
+        if (oldItems.length > 0 && this.tableSize == 0) {
+            console.error(
+                "Resize resulted in zero table size with items to rehash. Aborting rehash."
+            );
+            return;
+        }
+
         oldItems.forEach((node) => {
-            // Use the current set method which respects the current strategy
-            this.set(node.key, node.value);
+            // Use the current set method which respects the current strategy and new size/params
+            try {
+                this.set(node.key, node.value);
+            } catch (e: any) {
+                console.error(
+                    `Error rehashing key '${node.key}' during resize: ${e.message}`
+                );
+                // Depending on requirements, might continue or re-throw
+            }
         });
 
         console.log(
-            `Resize complete. New size: ${this.size}, Item count: ${this.itemCount}`
+            `Resize complete. New requested size: ${this.size}, New table size: ${this.tableSize}, Item count: ${this.itemCount}`
         );
+        if (this.itemCount !== oldItems.length) {
+            console.warn(
+                `Item count mismatch after resize: expected ${oldItems.length}, found ${this.itemCount}. Check for errors during rehash.`
+            );
+        }
     }
 
+    /**
+     * Calculates the load factor (alpha).
+     * For Chaining: Average chain length (items / number of buckets).
+     * For Probing: Ratio of occupied slots (items / table size).
+     * Note: For probing, this doesn't account for DELETED_MARKER slots,
+     * which can still impact performance.
+     */
     getLoadFactor(): number {
-        // For chaining, it's average chain length. For probing, it's % full.
-        return this.size > 0 ? this.itemCount / this.size : 0;
+        return this.tableSize > 0 ? this.itemCount / this.tableSize : 0;
     }
 
+    /**
+     * Estimates the number of primary collisions.
+     * For Chaining: Counts buckets with more than one item.
+     * For Probing: Counts occupied slots whose current index doesn't match their initial hash index.
+     * This is an approximation for probing collisions.
+     */
     getCollisionCount(): number {
-        // Meaningful for Chaining: counts buckets with >1 item.
-        // Less direct for probing, maybe count slots not in their 'natural' hash position?
         if (this.collisionResolution === CollisionResolution.Chaining) {
             return (this.buckets as HashTableNode[][]).filter(
                 (bucket) => bucket.length > 1
             ).length;
         } else {
-            // For probing, collision means needing to probe.
-            // We could count occupied slots != null whose initial hash isn't their current index.
             let probingCollisions = 0;
-            (
-                this.buckets as Array<
-                    HashTableNode | null | typeof DELETED_MARKER
-                >
-            ).forEach((node, index) => {
+            const probingBuckets = this.buckets as Array<ProbingBucketEntry>;
+            probingBuckets.forEach((node, index) => {
                 if (node && node !== DELETED_MARKER) {
-                    const initialHash = this.hash(node.key).finalHash;
-                    if (initialHash !== index) {
+                    // Re-calculate initial hash for the key found at this index
+                    const { initialIndex } = this.hash(node.key);
+                    if (initialIndex !== index) {
                         probingCollisions++;
                     }
                 }
@@ -670,34 +786,54 @@ export class HashTable {
         hashing: HashingStrategy,
         collision: CollisionResolution
     ): void {
-        const needsParamRegen =
-            this.hashingStrategy !== hashing &&
-            hashing === HashingStrategy.Universal;
-        const needsRUpdate =
-            this.collisionResolution !== collision &&
-            collision === CollisionResolution.DoubleHashing;
-        const needsBucketRestructure = this.collisionResolution !== collision;
+        console.warn("Changing strategies will clear the hash table!");
+
+        const oldCollision = this.collisionResolution;
+        const oldHashing = this.hashingStrategy;
 
         this.hashingStrategy = hashing;
         this.collisionResolution = collision;
 
-        if (needsParamRegen) this.generateUniversalParams();
-        if (needsRUpdate) this.setDoubleHashingR();
+        // Check if table size needs to become prime or can revert to requested size
+        const needsPrimeSize =
+            collision === CollisionResolution.LinearProbing ||
+            collision === CollisionResolution.DoubleHashing;
+        const oldNeedsPrimeSize =
+            oldCollision === CollisionResolution.LinearProbing ||
+            oldCollision === CollisionResolution.DoubleHashing;
 
-        // Important: Changing collision strategy requires resetting buckets
-        if (needsBucketRestructure) {
-            console.warn(
-                "Changing collision resolution strategy clears the table."
-            );
-            this.initializeBuckets(); // Reset buckets for the new structure
-        } else {
-            // If only hashing changes, might not need full clear, but safer to do so
-            // to avoid potential inconsistencies if items were added with old hash.
-            console.warn("Changing hashing strategy clears the table.");
-            this.clear();
+        if (needsPrimeSize && !oldNeedsPrimeSize) {
+            this.tableSize = this.findNextPrime(this.size); // Ensure prime size
+        } else if (!needsPrimeSize && oldNeedsPrimeSize) {
+            this.tableSize = this.size; // Revert to requested size if no longer probing
         }
+        // If both old and new need/don't need prime, tableSize might still change if size itself changed via resize previously. Re-align if necessary.
+        else if (needsPrimeSize) {
+            this.tableSize = this.findNextPrime(this.size);
+        } else {
+            this.tableSize = this.size;
+        }
+
+        // Regenerate parameters if necessary
+        if (
+            hashing === HashingStrategy.Universal &&
+            (oldHashing !== hashing || needsPrimeSize !== oldNeedsPrimeSize)
+        ) {
+            // Regenerate if switching TO Universal, or if table characteristics changed
+            this.generateUniversalParams();
+        }
+        if (
+            collision === CollisionResolution.DoubleHashing &&
+            (oldCollision !== collision || needsPrimeSize !== oldNeedsPrimeSize)
+        ) {
+            // Regenerate R if switching TO DoubleHashing or if table size changed nature
+            this.setDoubleHashingR();
+        }
+
+        // Changing strategies requires resetting buckets to match new structure/size
+        this.initializeBuckets(); // Re-create buckets and reset item count
     }
 }
 
-// Export node class if needed by the component, otherwise keep internal
-// export { HashTableNode }; // Let's keep it internal for now
+// Export node class if needed externally, otherwise keep internal
+// export { HashTableNode };
