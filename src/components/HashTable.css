@@ -1,0 +1,62 @@
+/* src/components/HashTable.css (Example - Adapt if using Tailwind) */
+.bucket {
+    border: 1px solid #ccc;
+    padding: 8px;
+    margin: 4px;
+    min-height: 60px;
+    background-color: #f9f9f9;
+    transition: background-color 0.5s ease;
+    text-align: center;
+    font-size: 0.8rem;
+}
+
+.bucket-index {
+    font-weight: bold;
+    font-size: 0.7rem;
+    color: #555;
+    margin-bottom: 4px;
+    display: block;
+}
+
+.bucket-highlighted {
+    background-color: #a0c4ff;
+    /* Light blue */
+}
+
+.bucket-probe-path {
+    background-color: #fff3a0;
+    /* Light yellow */
+}
+
+
+.chain-node {
+    background-color: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 2px 4px;
+    margin-top: 2px;
+    font-size: 0.75rem;
+}
+
+.probing-slot {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.slot-value {
+    font-weight: bold;
+}
+
+.slot-empty {
+    color: #999;
+    font-style: italic;
+}
+
+.slot-deleted {
+    color: #e57373;
+    /* Light red */
+    font-style: italic;
+    font-weight: bold;
+}

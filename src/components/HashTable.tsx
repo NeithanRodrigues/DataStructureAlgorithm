@@ -1,726 +1,585 @@
-import { useState, useEffect, FC, ChangeEvent, useCallback } from "react";
-import { motion } from "framer-motion";
-import { HashTable } from "../algorithm/HashTable";
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import {
+    HashTable,
+    HashingStrategy,
+    CollisionResolution,
+} from "../algorithm/HashTable";
+import "./HashTable.css";
 
-// Interfaces (remain the same)
-interface VisualizationData {
-    buckets: Array<{
-        index: number;
-        nodes: Array<{
-            key: string;
-            value: string;
-            highlight: boolean;
-        }>;
-    }>;
-    stats: {
-        loadFactor: number;
-        collisions: number;
-        totalItems: number;
-    };
+// Interface for hash step details
+interface HashStep {
+    char: string;
+    code: number;
+    position: number;
+    subtotal: number;
 }
 
-interface HashCalculationState {
+// Interface for operation result details
+interface OperationResult {
+    action: string; // 'set', 'get', 'remove'
     key: string;
-    steps: Array<{
-        char: string;
-        code: number;
-        position: number;
-        subtotal: number;
-    }>;
-    rawHash: number;
-    finalHash: number;
-    visible: boolean;
+    value?: string | null;
+    success?: boolean;
+    isUpdate?: boolean;
+    hashInfo: {
+        finalHash: number; // Initial hash index
+        steps?: HashStep[];
+        probes?: number;
+        probeSequence?: number[];
+    };
+    finalIndex?: number | null; // Actual final index after probing/chaining
+    message: string;
 }
 
-// *** STYLING REFINEMENTS START HERE ***
+// Helper to get node display value
+const getNodeDisplay = (node: any): string => {
+    if (node === null) return "null";
+    if (node.key === "__DELETED__") return "DEL"; // Use the DELETED_MARKER symbol
+    return `${node.key}: ${node.value}`;
+};
 
-const HashTableComponent: FC = () => {
-    const [tableSize, setTableSize] = useState<number>(8);
-    const [hashTable, setHashTable] = useState<HashTable>(
-        new HashTable(tableSize)
+const HashTableComponent: React.FC = () => {
+    const [size, setSize] = useState<number>(10);
+    const [hashingStrategy, setHashingStrategy] = useState<HashingStrategy>(
+        HashingStrategy.Simple
     );
-    const [visualizationData, setVisualizationData] =
-        useState<VisualizationData>({
-            buckets: [],
-            stats: { loadFactor: 0, collisions: 0, totalItems: 0 },
-        });
+    const [collisionStrategy, setCollisionStrategy] =
+        useState<CollisionResolution>(CollisionResolution.Chaining);
+
+    // Use useRef to hold the HashTable instance
+    const hashTableRef = useRef<HashTable>(
+        new HashTable(size, hashingStrategy, collisionStrategy)
+    );
+
+    const [buckets, setBuckets] = useState<Array<any>>(
+        hashTableRef.current.getBuckets()
+    );
     const [keyInput, setKeyInput] = useState<string>("");
     const [valueInput, setValueInput] = useState<string>("");
-    const [message, setMessage] = useState<string>("");
-    const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
-    const [hashCalculation, setHashCalculation] =
-        useState<HashCalculationState>({
-            key: "",
-            steps: [],
-            rawHash: 0,
-            finalHash: 0,
-            visible: false,
-        });
-    const [animatingBucket, setAnimatingBucket] = useState<number | null>(null);
+    const [operationResult, setOperationResult] =
+        useState<OperationResult | null>(null);
+    const [highlightedIndex, setHighlightedIndex] = useState<number | null>(
+        null
+    );
+    const [probePath, setProbePath] = useState<number[]>([]); // For visualizing probes
 
-    const updateVisualization = useCallback(() => {
-        const buckets = hashTable.getBuckets();
-        const totalItems = buckets.reduce(
-            (sum, bucket) => sum + bucket.length,
-            0
-        );
-
-        const vizData: VisualizationData = {
-            buckets: buckets.map((bucket, index) => ({
-                index,
-                nodes: bucket.map((node) => ({
-                    key: node.key,
-                    value: node.value,
-                    highlight: node.key === highlightedKey,
-                })),
-            })),
-            stats: {
-                loadFactor: hashTable.getLoadFactor(),
-                collisions: hashTable.getCollisionCount(),
-                totalItems,
-            },
-        };
-        setVisualizationData(vizData);
-    }, [hashTable, highlightedKey]); // Dependencies are correct
-
+    // Effect to update HashTable instance when strategies or size change
     useEffect(() => {
-        updateVisualization();
-    }, [updateVisualization]); // Dependency is correct
+        console.log(
+            `Recreating HashTable. Size: ${size}, Hashing: ${hashingStrategy}, Collision: ${collisionStrategy}`
+        );
+        hashTableRef.current = new HashTable(
+            size,
+            hashingStrategy,
+            collisionStrategy
+        );
+        setBuckets(hashTableRef.current.getBuckets());
+        setOperationResult(null); // Clear previous results
+        setHighlightedIndex(null);
+        setProbePath([]);
+    }, [size, hashingStrategy, collisionStrategy]);
 
-    const handleKeyInputChange = (
-        event: ChangeEvent<HTMLInputElement>
-    ): void => {
-        const newKey = event.target.value;
-        setKeyInput(newKey);
-        setMessage("");
+    const updateBuckets = useCallback(() => {
+        setBuckets([...hashTableRef.current.getBuckets()]); // Trigger re-render
+    }, []);
 
-        if (newKey) {
-            const { finalHash, steps } = hashTable.hash(newKey);
-            const rawHash =
-                steps.length > 0 ? steps[steps.length - 1].subtotal : 0;
+    const handleOperation = useCallback(
+        (action: "set" | "get" | "remove") => {
+            const key = keyInput;
+            if (!key) {
+                setOperationResult({
+                    action,
+                    key,
+                    message: "Key cannot be empty.",
+                    hashInfo: { finalHash: -1 }, // Provide a default hashInfo
+                });
+                return;
+            }
 
-            setHashCalculation({
-                key: newKey,
-                steps,
-                rawHash,
-                finalHash,
-                visible: true,
-            });
-        } else {
-            // Hide calculation if input is cleared
-            setHashCalculation((prev) => ({
-                ...prev,
-                visible: false,
-                key: "",
-            }));
+            let result: OperationResult;
+            setHighlightedIndex(null); // Reset highlights
+            setProbePath([]); // Reset probe path
+
+            try {
+                switch (action) {
+                    case "set": {
+                        const value = valueInput;
+                        const setResult = hashTableRef.current.set(key, value);
+                        result = {
+                            action: "set",
+                            key,
+                            value,
+                            isUpdate: setResult.isUpdate,
+                            hashInfo: setResult.hashInfo,
+                            finalIndex: setResult.finalIndex,
+                            message: `Set "${key}" to "${value}". ${
+                                setResult.isUpdate ? "(Updated)" : "(Inserted)"
+                            }${
+                                setResult.probes
+                                    ? ` Probes: ${setResult.probes}`
+                                    : ""
+                            }`,
+                        };
+                        setHighlightedIndex(setResult.finalIndex);
+                        setProbePath(setResult.probeSequence || []);
+                        break;
+                    }
+                    case "get": {
+                        const getResult = hashTableRef.current.get(key);
+                        result = {
+                            action: "get",
+                            key,
+                            value: getResult.value,
+                            hashInfo: getResult.hashInfo,
+                            finalIndex: getResult.finalIndex,
+                            message:
+                                getResult.value !== null
+                                    ? `Get "${key}": Found "${getResult.value}".`
+                                    : `Get "${key}": Not Found.${
+                                          getResult.probes
+                                              ? ` Probes: ${getResult.probes}`
+                                              : ""
+                                      }`,
+                        };
+                        setHighlightedIndex(getResult.finalIndex);
+                        setProbePath(getResult.probeSequence || []);
+                        break;
+                    }
+                    case "remove": {
+                        const removeResult = hashTableRef.current.remove(key);
+                        result = {
+                            action: "remove",
+                            key,
+                            success: removeResult.success,
+                            hashInfo: removeResult.hashInfo,
+                            finalIndex: removeResult.finalIndex, // Index where it was (or would be if probing)
+                            message: removeResult.success
+                                ? `Removed "${key}".`
+                                : `Remove "${key}": Not Found.${
+                                      removeResult.probes
+                                          ? ` Probes: ${removeResult.probes}`
+                                          : ""
+                                  }`,
+                        };
+                        // Highlight the initial hash or final probe location even if not found/deleted
+                        setHighlightedIndex(
+                            removeResult.finalIndex ??
+                                removeResult.hashInfo.finalHash
+                        );
+                        setProbePath(removeResult.probeSequence || []);
+                        break;
+                    }
+                }
+                setOperationResult(result);
+                updateBuckets(); // Update visualization
+                setKeyInput(""); // Clear inputs after operation
+                setValueInput("");
+            } catch (error: any) {
+                console.error("Operation failed:", error);
+                setOperationResult({
+                    action,
+                    key,
+                    message: `Error: ${error.message}`,
+                    hashInfo: { finalHash: -1 }, // Provide default hashInfo
+                });
+            }
+        },
+        [keyInput, valueInput, hashTableRef, updateBuckets]
+    );
+
+    const handleClear = () => {
+        hashTableRef.current.clear();
+        updateBuckets();
+        setOperationResult({
+            action: "clear",
+            key: "",
+            message: "Table cleared.",
+            hashInfo: { finalHash: -1 },
+        });
+        setHighlightedIndex(null);
+        setProbePath([]);
+    };
+
+    const handleSizeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const newSize = parseInt(event.target.value, 10);
+        if (!isNaN(newSize) && newSize > 0) {
+            setSize(newSize); // This triggers the useEffect to recreate the table
         }
     };
 
-    const handleValueInputChange = (
-        event: ChangeEvent<HTMLInputElement>
-    ): void => {
-        setValueInput(event.target.value);
-        setMessage("");
-    };
+    // --- Render Functions ---
 
-    // Common function to display calculation and animate
-    const showCalculationAndAnimate = (
-        hashInfo: ReturnType<typeof hashTable.hash>,
-        key: string
-    ) => {
-        const rawHash =
-            hashInfo.steps.length > 0
-                ? hashInfo.steps[hashInfo.steps.length - 1].subtotal
-                : 0;
-        setHashCalculation({
-            key: key,
-            steps: hashInfo.steps,
-            rawHash,
-            finalHash: hashInfo.finalHash,
-            visible: true,
-        });
-        setAnimatingBucket(hashInfo.finalHash);
-
-        // Use a timer to clear calculation visibility, animation, and highlight
-        const timerId = setTimeout(() => {
-            setHighlightedKey(null);
-            setAnimatingBucket(null);
-            // Only hide calculation if the keyInput hasn't changed to something else in the meantime
-            setHashCalculation((prev) =>
-                prev.key === key ? { ...prev, visible: false } : prev
+    const renderHashSteps = (steps: HashStep[] | undefined) => {
+        if (!steps || steps.length === 0)
+            return (
+                <p>Hash calculation steps not available for this strategy.</p>
             );
-        }, 3500); // Slightly longer timeout
-
-        // Return cleanup function if needed, though not strictly necessary here
-        return () => clearTimeout(timerId);
-    };
-
-    const handleSet = (): void => {
-        if (!keyInput.trim()) {
-            setMessage("Please enter a key.");
-            return;
-        }
-
-        const { hashInfo, isUpdate } = hashTable.set(keyInput, valueInput);
-        setMessage(
-            `Key "${keyInput}" ${
-                isUpdate ? "updated" : "added"
-            } with value "${valueInput}".`
+        return (
+            <ol className="list-decimal list-inside text-xs">
+                {steps.map((step, i) => (
+                    <li key={i}>
+                        Char: '{step.char}' (Code: {step.code}) * Pos:{" "}
+                        {step.position} = {step.code * step.position}. Subtotal:{" "}
+                        {step.subtotal}
+                    </li>
+                ))}
+            </ol>
         );
-        setHighlightedKey(keyInput); // Highlight the key being set/updated
-        showCalculationAndAnimate(hashInfo, keyInput);
-
-        // Clear inputs after action
-        setKeyInput("");
-        setValueInput("");
-        updateVisualization(); // Update visualization immediately
     };
 
-    const handleGet = (): void => {
-        if (!keyInput.trim()) {
-            setMessage("Please enter a key to search.");
-            return;
-        }
+    const renderBucketContent = (
+        bucketData: any,
+        index: number,
+        isHighlighted: boolean,
+        isInProbePath: boolean
+    ) => {
+        const baseClasses =
+            "border p-2 m-1 min-h-[50px] transition-colors duration-500";
+        const highlightClass = isHighlighted
+            ? "bg-blue-300"
+            : isInProbePath
+            ? "bg-yellow-200"
+            : "bg-gray-100";
 
-        const { value, hashInfo } = hashTable.get(keyInput);
-        showCalculationAndAnimate(hashInfo, keyInput); // Show calculation and bucket
-
-        if (value !== null) {
-            setMessage(`Found key "${keyInput}" with value "${value}".`);
-            setHighlightedKey(keyInput); // Highlight the found key
+        if (collisionStrategy === CollisionResolution.Chaining) {
+            const chain = bucketData as { key: string; value: string }[];
+            return (
+                <div className={`${baseClasses} ${highlightClass}`}>
+                    <strong className="block text-center text-xs mb-1">
+                        Index {index}
+                    </strong>
+                    {chain.length === 0 ? (
+                        <span className="text-gray-400 text-xs italic">
+                            Empty
+                        </span>
+                    ) : (
+                        <ul className="text-xs space-y-1">
+                            {chain.map((node, nodeIndex) => (
+                                <li
+                                    key={`${node.key}-${nodeIndex}`}
+                                    className="bg-white border rounded px-1 py-0.5"
+                                >
+                                    {node.key}: {node.value}
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            );
         } else {
-            setMessage(`Key "${keyInput}" not found.`);
-            setHighlightedKey(null); // Ensure nothing is highlighted if not found
+            // Linear Probing or Double Hashing
+            const node = bucketData as
+                | { key: string; value: string }
+                | null
+                | typeof DELETED_MARKER;
+            let displayValue: string;
+            let nodeClass = "text-xs";
+            if (node === null) {
+                displayValue = "[Empty]";
+                nodeClass += " text-gray-400 italic";
+            } else if (node.key === "__DELETED__") {
+                displayValue = "[Deleted]";
+                nodeClass += " text-red-500 italic";
+            } else {
+                displayValue = `${node.key}: ${node.value}`;
+                nodeClass += " font-semibold";
+            }
+
+            return (
+                <div
+                    className={`${baseClasses} ${highlightClass} flex flex-col justify-between items-center`}
+                >
+                    <strong className="block text-center text-xs mb-1">
+                        Index {index}
+                    </strong>
+                    <span className={nodeClass}>{displayValue}</span>
+                </div>
+            );
         }
-        // Do not clear inputs for "get"
     };
-
-    const handleRemove = (): void => {
-        if (!keyInput.trim()) {
-            setMessage("Please enter a key to remove.");
-            return;
-        }
-
-        const currentKey = keyInput; // Capture key before clearing
-        const { success, hashInfo } = hashTable.remove(currentKey);
-        showCalculationAndAnimate(hashInfo, currentKey); // Show calculation and bucket
-
-        if (success) {
-            setMessage(`Key "${currentKey}" removed successfully.`);
-            setHighlightedKey(null); // Clear highlight after removal
-            setKeyInput(""); // Clear inputs on successful removal
-            setValueInput("");
-            updateVisualization(); // Update visualization immediately
-        } else {
-            setMessage(`Key "${currentKey}" not found.`);
-            setHighlightedKey(null);
-        }
-    };
-
-    const handleResize = (newSize: number): void => {
-        if (newSize === tableSize) return; // No change needed
-        hashTable.resize(newSize);
-        setTableSize(newSize);
-        setMessage(`HashTable resized to ${newSize} buckets.`);
-        updateVisualization();
-        // Optionally hide hash calculation on resize
-        setHashCalculation((prev) => ({ ...prev, visible: false }));
-    };
-
-    const handleClear = (): void => {
-        hashTable.clear();
-        setMessage("HashTable cleared.");
-        updateVisualization();
-        setHashCalculation((prev) => ({ ...prev, visible: false }));
-        setKeyInput("");
-        setValueInput("");
-        setHighlightedKey(null);
-        setAnimatingBucket(null);
-    };
-
-    // Refined Color Palette & Bucket Styling
-    const getBucketColor = (index: number): string => {
-        const colors = [
-            "bg-sky-50",
-            "bg-emerald-50",
-            "bg-amber-50",
-            "bg-violet-50",
-            "bg-rose-50",
-            "bg-cyan-50",
-            "bg-fuchsia-50",
-            "bg-lime-50",
-        ];
-        return colors[index % colors.length];
-    };
-
-    const exportToJson = () => {
-        const exportData = {
-            tableSize,
-            buckets: visualizationData.buckets.map((bucket) => ({
-                index: bucket.index,
-                nodes: bucket.nodes.map((node) => ({
-                    key: node.key,
-                    value: node.value,
-                    highlight: node.highlight,
-                })),
-            })),
-            stats: visualizationData.stats,
-        };
-    
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-            type: "application/json",
-        });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = "hashTableExport.json";
-        link.click();
-    };
-
-    const exportToCsv = () => {
-        const headers = ["Key", "Value"];
-        const rows = visualizationData.buckets.flatMap((bucket) =>
-            bucket.nodes.map((node) => [node.key, node.value])
-        );
-    
-        const csvContent = [
-            headers.join(","),
-            ...rows.map((row) => row.join(",")),
-        ].join("\n");
-    
-        const blob = new Blob([csvContent], {
-            type: "text/csv;charset=utf-8;",
-        });
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = "hashTableExport.csv";
-        link.click();
-    };
-    
-
-    const getLoadFactorStatus = (): { color: string; message: string } => {
-        const loadFactor = visualizationData.stats.loadFactor;
-        if (loadFactor < 0.5) return { color: "bg-green-500", message: "Good" };
-        if (loadFactor < 0.7)
-            return { color: "bg-yellow-500", message: "Okay" };
-        return { color: "bg-red-500", message: "High" };
-    };
-
-    const loadFactorStatus = getLoadFactorStatus();
 
     return (
-        // Use a slightly lighter background for the whole container if desired
-        <div className="flex flex-col items-center max-w-5xl mx-auto my-10 p-6 bg-white rounded-xl shadow-lg">
-            <h2 className="text-3xl font-bold mb-6 text-gray-800">
-                Interactive HashTable
+        <div className="p-4 space-y-4 font-sans bg-gradient-to-br from-blue-50 to-indigo-100 rounded-lg shadow-lg max-w-7xl mx-auto">
+            <h2 className="text-2xl font-bold text-center text-indigo-700 mb-4">
+                Interactive Hash Table
             </h2>
 
-            {/* Controls Section - Improved Layout & Styling */}
-            <div className="w-full mb-8 p-6 bg-slate-50 rounded-lg border border-slate-200 shadow-sm">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Input & Actions */}
-                    <div className="space-y-4">
-                        <div className="flex flex-col sm:flex-row gap-3">
-                            <input
-                                type="text"
-                                value={keyInput}
-                                onChange={handleKeyInputChange}
-                                placeholder="Enter key"
-                                className="border border-slate-300 rounded-md flex-1 px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition duration-150 ease-in-out"
-                            />
-                            <input
-                                type="text"
-                                value={valueInput}
-                                onChange={handleValueInputChange}
-                                placeholder="Enter value (for Set)"
-                                className="border border-slate-300 rounded-md flex-1 px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition duration-150 ease-in-out"
-                            />
-                        </div>
-                        <div className="flex flex-wrap gap-3">
-                            {/* Consistent Button Styling */}
-                            <button
-                                onClick={handleSet}
-                                className="bg-green-500 hover:bg-green-600 text-white px-5 py-2 rounded-md font-medium transition duration-150 ease-in-out shadow-sm hover:shadow-md"
-                            >
-                                Set
-                            </button>
-                            <button
-                                onClick={handleGet}
-                                className="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2 rounded-md font-medium transition duration-150 ease-in-out shadow-sm hover:shadow-md"
-                            >
-                                Get
-                            </button>
-                            <button
-                                onClick={handleRemove}
-                                className="bg-red-500 hover:bg-red-600 text-white px-5 py-2 rounded-md font-medium transition duration-150 ease-in-out shadow-sm hover:shadow-md"
-                            >
-                                Remove
-                            </button>
-                            <button
-                                onClick={handleClear}
-                                className="bg-slate-500 hover:bg-slate-600 text-white px-5 py-2 rounded-md font-medium transition duration-150 ease-in-out shadow-sm hover:shadow-md"
-                            >
-                                Clear All
-                            </button>
-                            <button
-                                onClick={exportToJson}
-                                className="bg-blue-500 hover:bg-blue-600 text-white px-5 py-2 rounded-md font-medium transition duration-150 ease-in-out shadow-sm hover:shadow-md">
-                                JSON
-                            </button>
-                            <button
-                                onClick={exportToCsv}
-                                className="bg-green-500 hover:bg-green-600 text-white px-5 py-2 rounded-md font-medium transition duration-150 ease-in-out shadow-sm hover:shadow-md">
-                                Export to CSV
-                            </button>
-
-                        </div>
-                    </div>
-
-                    {/* Size & Load Factor */}
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block font-medium text-slate-700 mb-2">
-                                Table Size:
-                            </label>
-                            <div className="flex flex-wrap gap-2">
-                                {[4, 8, 16, 32].map((size) => (
-                                    <button
-                                        key={size}
-                                        onClick={() => handleResize(size)}
-                                        className={`px-4 py-1 rounded-md border transition duration-150 ease-in-out ${
-                                            tableSize === size
-                                                ? "bg-indigo-600 text-white font-semibold border-indigo-700 shadow-md"
-                                                : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100 hover:border-slate-400"
-                                        }`}
-                                    >
-                                        {size}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        {/* Improved Load Factor Display */}
-                        <div>
-                            <label className="block font-medium text-slate-700 mb-1">
-                                Load Factor:
-                            </label>
-                            <div className="flex items-center gap-3">
-                                <div className="flex-1 bg-slate-200 rounded-full h-2.5 overflow-hidden">
-                                    <div
-                                        className={`${loadFactorStatus.color} h-2.5 rounded-full transition-all duration-300 ease-in-out`}
-                                        style={{
-                                            width: `${Math.min(
-                                                visualizationData.stats
-                                                    .loadFactor * 100,
-                                                100
-                                            )}%`,
-                                        }}
-                                    ></div>
-                                </div>
-                                <div className="text-sm font-medium text-slate-800 w-28 text-right">
-                                    {(
-                                        visualizationData.stats.loadFactor * 100
-                                    ).toFixed(0)}
-                                    %
-                                    <span
-                                        className={`ml-1 text-xs font-normal ${loadFactorStatus.color.replace(
-                                            "bg-",
-                                            "text-"
-                                        )}`}
-                                    >
-                                        ({loadFactorStatus.message})
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+            {/* Configuration Controls */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 bg-white rounded shadow">
+                <div>
+                    <label
+                        htmlFor="sizeInput"
+                        className="block text-sm font-medium text-gray-700"
+                    >
+                        Table Size:
+                    </label>
+                    <input
+                        id="sizeInput"
+                        type="number"
+                        value={size}
+                        onChange={handleSizeChange}
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        min="1"
+                    />
+                </div>
+                <div>
+                    <label
+                        htmlFor="hashingStrategy"
+                        className="block text-sm font-medium text-gray-700"
+                    >
+                        Hashing Strategy:
+                    </label>
+                    <select
+                        id="hashingStrategy"
+                        value={hashingStrategy}
+                        onChange={(e) =>
+                            setHashingStrategy(
+                                e.target.value as HashingStrategy
+                            )
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    >
+                        <option value={HashingStrategy.Simple}>
+                            Simple (Weighted Sum)
+                        </option>
+                        <option value={HashingStrategy.Universal}>
+                            Universal Hashing
+                        </option>
+                    </select>
+                </div>
+                <div>
+                    <label
+                        htmlFor="collisionStrategy"
+                        className="block text-sm font-medium text-gray-700"
+                    >
+                        Collision Resolution:
+                    </label>
+                    <select
+                        id="collisionStrategy"
+                        value={collisionStrategy}
+                        onChange={(e) =>
+                            setCollisionStrategy(
+                                e.target.value as CollisionResolution
+                            )
+                        }
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    >
+                        <option value={CollisionResolution.Chaining}>
+                            Separate Chaining
+                        </option>
+                        <option value={CollisionResolution.LinearProbing}>
+                            Linear Probing
+                        </option>
+                        <option value={CollisionResolution.DoubleHashing}>
+                            Double Hashing
+                        </option>
+                    </select>
                 </div>
             </div>
 
-            {/* Message Section - Slightly Enhanced */}
-            {message && (
-                <div className="w-full mb-6 p-4 bg-blue-50 border border-blue-200 text-blue-800 rounded-md shadow-sm">
-                    <p className="text-sm font-medium">{message}</p>
+            {/* Explanation Texts */}
+            <div className="p-3 bg-indigo-50 rounded border border-indigo-200 text-sm text-indigo-800 space-y-1">
+                <p>
+                    <strong>
+                        {hashingStrategy.replace("_", " ")} Hashing:
+                    </strong>
+                    {hashingStrategy === HashingStrategy.Simple &&
+                        " Calculates hash based on character codes and positions."}
+                    {hashingStrategy === HashingStrategy.Universal &&
+                        " Uses randomized parameters (a, b, p) for better distribution. Parameters are regenerated on resize."}
+                </p>
+                <p>
+                    <strong>{collisionStrategy.replace("_", " ")}:</strong>
+                    {collisionStrategy === CollisionResolution.Chaining &&
+                        " Stores colliding elements in a list at the hash index."}
+                    {collisionStrategy === CollisionResolution.LinearProbing &&
+                        " Searches sequentially for the next empty slot on collision."}
+                    {collisionStrategy === CollisionResolution.DoubleHashing &&
+                        " Uses a second hash function to determine the step size for probing."}
+                </p>
+                <p>
+                    <strong>Perfect Hashing (Concept):</strong> Guarantees O(1)
+                    lookups for a *static* set of keys by using a two-level
+                    hashing scheme. Complex to implement dynamically.
+                </p>
+            </div>
+
+            {/* Input Controls */}
+            <div className="flex flex-wrap gap-2 items-end p-3 bg-white rounded shadow">
+                <div className="flex-grow">
+                    <label
+                        htmlFor="keyInput"
+                        className="block text-sm font-medium text-gray-700"
+                    >
+                        Key:
+                    </label>
+                    <input
+                        id="keyInput"
+                        type="text"
+                        value={keyInput}
+                        onChange={(e) => setKeyInput(e.target.value)}
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        placeholder="Enter key"
+                    />
+                </div>
+                <div className="flex-grow">
+                    <label
+                        htmlFor="valueInput"
+                        className="block text-sm font-medium text-gray-700"
+                    >
+                        Value:
+                    </label>
+                    <input
+                        id="valueInput"
+                        type="text"
+                        value={valueInput}
+                        onChange={(e) => setValueInput(e.target.value)}
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        placeholder="Enter value"
+                    />
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                    <button
+                        onClick={() => handleOperation("set")}
+                        className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                    >
+                        Set
+                    </button>
+                    <button
+                        onClick={() => handleOperation("get")}
+                        className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                    >
+                        Get
+                    </button>
+                    <button
+                        onClick={() => handleOperation("remove")}
+                        className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                    >
+                        Remove
+                    </button>
+                    <button
+                        onClick={handleClear}
+                        className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                    >
+                        Clear
+                    </button>
+                </div>
+            </div>
+
+            {/* Operation Result Display */}
+            {operationResult && (
+                <div className="p-3 bg-yellow-100 border border-yellow-300 rounded shadow-sm text-sm">
+                    <p>
+                        <strong>Last Operation:</strong>{" "}
+                        {operationResult.action.toUpperCase()} (
+                        {operationResult.key})
+                    </p>
+                    <p>{operationResult.message}</p>
+                    {operationResult.hashInfo?.finalHash !== -1 && (
+                        <p>
+                            Initial Hash Index:{" "}
+                            {operationResult.hashInfo.finalHash}
+                        </p>
+                    )}
+                    {operationResult.finalIndex !== undefined &&
+                        operationResult.finalIndex !== null && (
+                            <p>Final Index: {operationResult.finalIndex}</p>
+                        )}
+                    {operationResult.hashInfo?.probes !== undefined && (
+                        <p>Probes: {operationResult.hashInfo.probes}</p>
+                    )}
+                    {operationResult.hashInfo?.probeSequence &&
+                        operationResult.hashInfo.probeSequence.length > 1 && (
+                            <p>
+                                Probe Sequence:{" "}
+                                {operationResult.hashInfo.probeSequence.join(
+                                    " -> "
+                                )}
+                            </p>
+                        )}
+                    {/* Display Hash Steps (if available) */}
+                    {operationResult.hashInfo?.steps && (
+                        <div>
+                            <p className="font-medium mt-1">
+                                Hash Calculation Steps:
+                            </p>
+                            {renderHashSteps(operationResult.hashInfo.steps)}
+                            <p>
+                                Final Hash ={" "}
+                                {
+                                    operationResult.hashInfo.steps[
+                                        operationResult.hashInfo.steps.length -
+                                            1
+                                    ].subtotal
+                                }{" "}
+                                % {size} = {operationResult.hashInfo.finalHash}
+                            </p>
+                        </div>
+                    )}
+                    {hashingStrategy === HashingStrategy.Universal &&
+                        operationResult.hashInfo?.finalHash !== -1 && (
+                            <p className="text-xs italic mt-1">
+                                (Universal Hash: ((a*k + b) % p) % m)
+                            </p>
+                        )}
                 </div>
             )}
 
-            {/* Hash Calculation Visualization - Improved Table Styling */}
-            {hashCalculation.visible && (
-                <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, height: 0, marginBottom: 0 }} // Ensure margin collapses on exit
-                    transition={{ duration: 0.3 }}
-                    className="w-full mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg shadow-sm overflow-hidden" // Added overflow-hidden
-                >
-                    <h3 className="font-semibold text-slate-800 mb-3 text-lg">
-                        Hash Calculation for:{" "}
-                        <code className="bg-amber-100 px-2 py-0.5 rounded text-amber-800">
-                            {hashCalculation.key}
-                        </code>
-                    </h3>
-
-                    <div className="overflow-x-auto rounded">
-                        {" "}
-                        {/* Rounded corners for scroll container */}
-                        <table className="min-w-full text-sm border border-amber-200">
-                            <thead className="bg-amber-100">
-                                <tr className="border-b border-amber-300">
-                                    <th className="px-3 py-2 text-left font-medium text-amber-800">
-                                        Char
-                                    </th>
-                                    <th className="px-3 py-2 text-left font-medium text-amber-800">
-                                        ASCII
-                                    </th>
-                                    <th className="px-3 py-2 text-left font-medium text-amber-800">
-                                        Pos
-                                    </th>
-                                    <th className="px-3 py-2 text-left font-medium text-amber-800">
-                                        Char * Pos
-                                    </th>
-                                    <th className="px-3 py-2 text-left font-medium text-amber-800">
-                                        Running Total
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white">
-                                {hashCalculation.steps.map((step, index) => (
-                                    <tr
-                                        key={index}
-                                        className="border-b border-amber-100 last:border-b-0 hover:bg-amber-50 transition duration-100"
-                                    >
-                                        <td className="px-3 py-2 font-mono text-center">
-                                            {step.char}
-                                        </td>
-                                        <td className="px-3 py-2 text-right">
-                                            {step.code}
-                                        </td>
-                                        <td className="px-3 py-2 text-right">
-                                            {step.position}
-                                        </td>
-                                        <td className="px-3 py-2 text-right">
-                                            {step.code * step.position}
-                                        </td>
-                                        <td className="px-3 py-2 text-right font-medium">
-                                            {step.subtotal}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* Summary below table */}
-                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                        <span className="font-medium text-slate-700">
-                            Total Hash:
-                        </span>
-                        <code className="font-mono text-slate-800">
-                            {hashCalculation.rawHash}
-                        </code>
-                        <span className="font-medium text-slate-700">
-                            Table Size:
-                        </span>
-                        <code className="font-mono text-slate-800">
-                            {tableSize}
-                        </code>
-                        <span className="font-medium text-slate-700">
-                            Bucket Index:
-                        </span>
-                        <code className="font-mono text-slate-800">
-                            {hashCalculation.rawHash} % {tableSize} =
-                        </code>
-                        <span className="font-bold text-lg bg-amber-200 text-amber-900 px-2 py-1 rounded">
-                            {hashCalculation.finalHash}
-                        </span>
-                    </div>
-                </motion.div>
-            )}
-
-            {/* HashTable Visualization - Refined Bucket/Node Styling */}
-            <div className="w-full border border-slate-300 rounded-lg overflow-hidden shadow-md">
-                {visualizationData.buckets.map((bucket) => (
-                    <motion.div
-                        key={bucket.index}
-                        className="border-b border-slate-200 last:border-b-0" // Consistent border
-                        // Animate background color smoothly
-                        animate={{
-                            // Use the base color function, apply animating color temporarily
-                            backgroundColor:
-                                animatingBucket === bucket.index
-                                    ? [
-                                          "#FFFBEB",
-                                          getBucketColor(bucket.index).replace(
-                                              "bg-",
-                                              ""
-                                          ),
-                                      ] // Flash yellow then back to base
-                                    : getBucketColor(bucket.index).replace(
-                                          "bg-",
-                                          ""
-                                      ), // Base color (needs hex/rgb) - Simplified for now
-                        }}
-                        // Apply base color directly for non-animated state
-                        style={{
-                            backgroundColor: getBucketColor(
-                                bucket.index
-                            ).replace("bg-", ""),
-                        }}
-                        transition={{ duration: 1.5, times: [0, 0.2, 1] }} // Adjust timing
-                    >
-                        <div
-                            className={`flex min-h-[72px] ${getBucketColor(
-                                bucket.index
-                            )}`}
-                        >
-                            {" "}
-                            {/* Use class for base color */}
-                            {/* Bucket Index Styling */}
-                            <div className="w-16 flex items-center justify-center bg-slate-100 font-mono font-bold text-slate-700 p-2 border-r border-slate-200 text-lg">
-                                {bucket.index}
-                            </div>
-                            {/* Bucket Content Area */}
-                            <div className="flex-1 p-3 flex items-center">
-                                {bucket.nodes.length === 0 ? (
-                                    <div className="text-slate-400 italic text-sm w-full text-center">
-                                        Empty
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-wrap gap-3">
-                                        {/* Node Styling & Animation */}
-                                        {bucket.nodes.map((node, idx) => (
-                                            <motion.div
-                                                key={`${node.key}-${idx}`} // Ensure key uniqueness if keys can be duplicated (though unlikely in standard hashmap vis)
-                                                layout // Animate layout changes smoothly
-                                                initial={{
-                                                    scale: 0.8,
-                                                    opacity: 0,
-                                                }}
-                                                animate={{
-                                                    scale: 1,
-                                                    opacity: 1,
-                                                    // More pronounced highlight animation
-                                                    boxShadow: node.highlight
-                                                        ? [
-                                                              "0px 0px 0px rgba(0,0,0,0)",
-                                                              "0px 0px 12px 3px rgba(250, 204, 21, 0.9)",
-                                                              "0px 0px 0px rgba(0,0,0,0)",
-                                                          ]
-                                                        : "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)", // Tailwind shadow-sm equivalent
-                                                }}
-                                                transition={{
-                                                    duration: 0.3,
-                                                    boxShadow: {
-                                                        duration: 1.2,
-                                                        repeat: node.highlight
-                                                            ? 1
-                                                            : 0,
-                                                    }, // Repeat highlight flash once
-                                                }}
-                                                className={`border rounded-lg shadow-sm p-2.5 ${
-                                                    node.highlight
-                                                        ? "border-amber-400 bg-amber-50 ring-2 ring-amber-300"
-                                                        : "bg-white border-slate-200 hover:shadow-md hover:-translate-y-0.5 transition-all duration-150 ease-in-out"
-                                                }`}
-                                            >
-                                                <div className="text-sm font-semibold text-slate-800 break-all">
-                                                    {node.key}
-                                                </div>
-                                                <div className="text-xs text-slate-600 break-all">
-                                                    {node.value}
-                                                </div>
-                                            </motion.div>
-                                        ))}
-                                    </div>
+            {/* Hash Table Visualization */}
+            <div className="mt-4 p-3 bg-white rounded shadow overflow-x-auto">
+                <h3 className="text-lg font-semibold mb-2 text-indigo-600">
+                    Hash Table Structure
+                </h3>
+                <div className={`grid grid-cols-${Math.min(size, 12)} gap-1`}>
+                    {" "}
+                    {/* Adjust grid columns based on size */}
+                    {buckets.map((bucketData, index) => {
+                        const isHighlighted = index === highlightedIndex;
+                        // Check if the index is part of the probe path (excluding the final landing spot if it's also highlighted)
+                        const isInProbePath =
+                            probePath.includes(index) &&
+                            index !== highlightedIndex;
+                        return (
+                            <div key={index}>
+                                {renderBucketContent(
+                                    bucketData,
+                                    index,
+                                    isHighlighted,
+                                    isInProbePath
                                 )}
                             </div>
-                        </div>
-                    </motion.div>
-                ))}
-            </div>
-
-            {/* Statistics - Enhanced Boxes */}
-            <div className="w-full mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-                    <div className="text-sm text-slate-500 mb-1">
-                        Total Items
-                    </div>
-                    <div className="text-2xl font-semibold text-slate-800">
-                        {visualizationData.stats.totalItems}
-                    </div>
+                        );
+                    })}
                 </div>
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-                    <div className="text-sm text-slate-500 mb-1">
-                        Load Factor
-                    </div>
-                    <div className="text-2xl font-semibold text-slate-800">
-                        {visualizationData.stats.loadFactor.toFixed(2)}
-                    </div>
-                </div>
-                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-                    <div className="text-sm text-slate-500 mb-1">
-                        Collisions
-                    </div>
-                    <div className="text-2xl font-semibold text-slate-800">
-                        {visualizationData.stats.collisions}
-                    </div>
-                </div>
-            </div>
-
-            {/* Educational Information - Slightly Improved Readability */}
-            <div className="mt-10 pt-6 border-t border-slate-200 text-slate-700 w-full text-sm">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <p className="font-semibold text-base text-slate-800 mb-3">
-                            How the HashTable Works:
-                        </p>
-                        <ul className="list-disc space-y-1.5 pl-5">
-                            <li>
-                                Keys are processed by a hash function to find a
-                                bucket index.
-                            </li>
-                            <li>
-                                The hash function uses character codes and
-                                positions.
-                            </li>
-                            <li>
-                                Modulo (%) operation maps the hash value to the
-                                table size.
-                            </li>
-                            <li>
-                                Collisions occur when multiple keys map to the
-                                same bucket.
-                            </li>
-                            <li>
-                                This visualization uses 'chaining': nodes in the
-                                same bucket form a list.
-                            </li>
-                        </ul>
-                    </div>
-                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <p className="font-semibold text-base text-slate-800 mb-3">
-                            Performance Notes:
-                        </p>
-                        <ul className="list-disc space-y-1.5 pl-5">
-                            <li>
-                                Avg. Time (Set/Get/Remove): O(1) - Constant
-                                time.
-                            </li>
-                            <li>
-                                Worst Case (many collisions): O(n) - Linear
-                                time.
-                            </li>
-                            <li>
-                                Load Factor (Items / Buckets) impacts speed.
-                                Lower is generally faster.
-                            </li>
-                            <li>
-                                Keep Load Factor below ~0.7 for good
-                                performance.
-                            </li>
-                            <li>
-                                Resizing redistributes items to maintain
-                                efficiency.
-                            </li>
-                        </ul>
+                <div className="mt-3 text-sm text-gray-600">
+                    <p>
+                        Load Factor:{" "}
+                        {hashTableRef.current.getLoadFactor().toFixed(2)}
+                    </p>
+                    <p>
+                        Collisions (
+                        {collisionStrategy === CollisionResolution.Chaining
+                            ? "buckets > 1 item"
+                            : "displaced items"}
+                        ): {hashTableRef.current.getCollisionCount()}
+                    </p>
+                    <div className="flex space-x-4 mt-1">
+                        <span className="flex items-center">
+                            <span className="w-3 h-3 bg-yellow-200 mr-1 inline-block"></span>{" "}
+                            Probe Path
+                        </span>
+                        <span className="flex items-center">
+                            <span className="w-3 h-3 bg-blue-300 mr-1 inline-block"></span>{" "}
+                            Final Location
+                        </span>
+                        {collisionStrategy !== CollisionResolution.Chaining && (
+                            <span className="flex items-center">
+                                <span className="w-3 h-3 text-red-500 mr-1 inline-block font-bold">
+                                    DEL
+                                </span>{" "}
+                                Deleted Slot
+                            </span>
+                        )}
                     </div>
                 </div>
             </div>

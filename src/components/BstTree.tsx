@@ -1,29 +1,113 @@
 import { useState, useEffect, FC, ChangeEvent, useCallback } from "react";
 import Tree from "react-d3-tree";
-import { BST, TreeNode } from "../algorithm/BstTree";
-import { motion } from "framer-motion";
+import { BST, TreeNode } from "../algorithm/BstTree"; // Assuming this file exports BST and TreeNode
 
+// Define clear interfaces for react-d3-tree data structure
 interface TreeDataNode {
-    name: string;
-    children?: TreeDataNode[];
-    highlight?: boolean;
+    name: string; // Node value as string
+    children?: TreeDataNode[]; // Optional children array
 }
 
+// Interface for the node datum provided by react-d3-tree's renderCustomNodeElement
 interface NodeDatum {
     name: string;
     children?: NodeDatum[];
-    highlight?: boolean;
-    __rd3t?: any;
+    __rd3t?: any; // Internal properties used by react-d3-tree
 }
 
 const BSTComponent: FC = () => {
+    // State for the BST instance itself
+    // We keep the BST instance in state to perform operations on it
     const [bstInstance, setBstInstance] = useState<BST>(new BST());
+    // State for the data formatted for react-d3-tree visualization
     const [treeData, setTreeData] = useState<TreeDataNode | null>(null);
+    // State to manage loading status during tree generation
+    const [isLoading, setIsLoading] = useState<boolean>(true);
+    // State for the input field value
     const [inputValue, setInputValue] = useState<string>("");
+    // State for displaying messages to the user (e.g., success, error, found/not found)
     const [message, setMessage] = useState<string>("");
-    const [highlightedNode, setHighlightedNode] = useState<number | null>(null);
+    const [benchResult, setBenchResult] = useState<number | null>(null);
 
-    const NODE_RADIUS = 20;
+    // Constants for tree container dimensions and node appearance
+    const CONTAINER_WIDTH = 1200; // Approximate width for translation calculation
+    // const CONTAINER_HEIGHT = 700; // Not directly used in translate but good for reference
+    const NODE_RADIUS = 20; // Smaller radius for potentially more nodes
+
+    // --- Core BST Interaction Functions ---
+
+    /**
+     * Converts the internal BST structure into the format required by react-d3-tree.
+     * This is a recursive function.
+     * @param node The current TreeNode (or null) from the BST.
+     * @returns The TreeDataNode structure for react-d3-tree, or null.
+     */
+    const convertToTreeFormat = (
+        node: TreeNode | null
+    ): TreeDataNode | null => {
+        if (!node) return null; // Base case: empty node/subtree
+
+        // Recursively convert left and right children
+        const children = [
+            convertToTreeFormat(node.left),
+            convertToTreeFormat(node.right),
+        ].filter(Boolean) as TreeDataNode[]; // Filter out null results (empty children)
+
+        // Return the node structure for react-d3-tree
+        return {
+            name: node.value.toString(), // Node value becomes the 'name'
+            // Only include the 'children' property if there are actual children
+            ...(children.length > 0 && { children }),
+        };
+    };
+
+    /**
+     * Updates the visual tree data based on the current state of the bstInstance.
+     * Should be called after any operation that modifies the BST (insert, remove).
+     */
+    const updateTreeVisualization = useCallback(() => {
+        // Convert the current BST root to the react-d3-tree format
+        const formattedTree = convertToTreeFormat(bstInstance.getRoot());
+        // Update the state, triggering a re-render of the Tree component
+        setTreeData(formattedTree);
+        // console.log("Tree visualization updated.");
+    }, [bstInstance]); // Dependency: run only if bstInstance changes
+
+    /**
+     * Generates a new BST with a fixed number of unique random values.
+     * Clears the existing tree and populates a new one.
+     */
+    const generateRandomBST = useCallback((): void => {
+        setIsLoading(true);
+        setMessage("");
+        setInputValue("");
+
+        const newBst = new BST();
+        const numElements = 100;
+        const values = new Set<number>();
+
+        while (values.size < numElements) {
+            values.add(Math.floor(Math.random() * 900));
+        }
+
+        Array.from(values).forEach((val) => newBst.insert(val));
+
+        setBstInstance(newBst);
+
+        const formattedTree = convertToTreeFormat(newBst.getRoot());
+        setTreeData(formattedTree);
+
+        setIsLoading(false); // Hide loading indicator
+    }, []); // No dependencies, it always creates a new tree
+
+    useEffect(() => {
+        generateRandomBST();
+    }, [generateRandomBST]);
+
+    const handleInputChange = (event: ChangeEvent<HTMLInputElement>): void => {
+        setInputValue(event.target.value); // Update input value state
+        setMessage(""); // Clear message when user starts typing
+    };
 
     const exportToJson = (): void => {
         const value = parseInt(inputValue, 10);
@@ -31,28 +115,32 @@ const BSTComponent: FC = () => {
             setMessage("Please enter a valid number to search.");
             return;
         }
-    
+
         const foundNode = bstInstance.search(value);
-    
+
         const searchResult = {
             searchedValue: value,
             found: !!foundNode,
         };
-    
-        const jsonBlob = new Blob([JSON.stringify(searchResult, null, 2)], { type: "application/json" });
+
+        const jsonBlob = new Blob([JSON.stringify(searchResult, null, 2)], {
+            type: "application/json",
+        });
         const downloadLink = document.createElement("a");
         downloadLink.href = URL.createObjectURL(jsonBlob);
         downloadLink.download = `search_result_${value}.json`;
         document.body.appendChild(downloadLink);
         downloadLink.click();
         document.body.removeChild(downloadLink);
-    
+
         setMessage(`Search result exported for number ${value}.`);
     };
-    
+
     const exportToCsv = (value: number, found: boolean): void => {
-        const csvContent = `Searched Value,Found\n${value},${found ? "Yes" : "No"}`;
-    
+        const csvContent = `Searched Value,Found\n${value},${
+            found ? "Yes" : "No"
+        }`;
+
         const csvBlob = new Blob([csvContent], { type: "text/csv" });
         const downloadLink = document.createElement("a");
         downloadLink.href = URL.createObjectURL(csvBlob);
@@ -60,51 +148,30 @@ const BSTComponent: FC = () => {
         document.body.appendChild(downloadLink);
         downloadLink.click();
         document.body.removeChild(downloadLink);
-    
+
         setMessage(`Search result exported for number ${value}.`);
     };
 
-    const convertToTreeFormat = (node: TreeNode | null): TreeDataNode | null => {
-        if (!node) return null;
-
-        const children = [
-            convertToTreeFormat(node.left),
-            convertToTreeFormat(node.right),
-        ].filter(Boolean) as TreeDataNode[];
-
-        return {
-            name: node.value.toString(),
-            children: children.length > 0 ? children : undefined,
-            highlight: node.value === highlightedNode,
-        };
-    };
-
-    const updateTreeVisualization = useCallback(() => {
-        const formattedTree = convertToTreeFormat(bstInstance.getRoot());
-        setTreeData(formattedTree);
-    }, [bstInstance, highlightedNode]);
-
-    useEffect(() => {
-        updateTreeVisualization();
-    }, [updateTreeVisualization]);
-
-    const handleInputChange = (event: ChangeEvent<HTMLInputElement>): void => {
-        setInputValue(event.target.value);
-        setMessage("");
-    };
-
     const handleAdd = (): void => {
-        const value = parseInt(inputValue, 10);
+        const value = parseInt(inputValue, 10); // Parse input string to integer (base 10)
         if (isNaN(value)) {
+            // Check if parsing failed
             setMessage("Please enter a valid number.");
             return;
         }
-        bstInstance.insert(value);
-        setMessage(`Number ${value} added successfully.`);
-        setHighlightedNode(value);
-        setInputValue("");
-        updateTreeVisualization();
-        setTimeout(() => setHighlightedNode(null), 2000);
+
+        try {
+            bstInstance.insert(value); // Insert the value into the BST instance
+            updateTreeVisualization(); // Update the visual representation
+            setMessage(`Number ${value} added successfully.`);
+            setInputValue(""); // Clear the input field
+        } catch (error) {
+            // Handle potential errors from the insert method (e.g., duplicate if not allowed)
+            setMessage(
+                error instanceof Error ? error.message : "Failed to add number."
+            );
+            console.error("Add error:", error);
+        }
     };
 
     const handleSearch = (): void => {
@@ -113,15 +180,53 @@ const BSTComponent: FC = () => {
             setMessage("Please enter a valid number to search.");
             return;
         }
-        const foundNode = bstInstance.search(value);
-        if (foundNode) {
-            setMessage(`Number ${value} found.`);
-            setHighlightedNode(value);
-            setTimeout(() => setHighlightedNode(null), 2000);
-        } else {
-            setMessage(`Number ${value} not found.`);
+
+        try {
+            // Assume bstInstance.search returns the node if found, or null otherwise
+            const startTime = performance.now();
+            const foundNode = bstInstance.search(value);
+            const endTime = performance.now();
+
+            setBenchResult(endTime - startTime);
+            if (foundNode) {
+                setMessage(`Number ${value} found in the tree.`);
+                // Future enhancement: Add logic here to highlight the found node visually.
+            } else {
+                setMessage(`Number ${value} not found in the tree.`);
+            }
+            setInputValue(""); // Clear input after search
+        } catch (error) {
+            setMessage("An error occurred during search.");
+            console.error("Search error:", error);
         }
-        setInputValue("");
+    };
+
+    const handleSearchBFS = (): void => {
+        const value = parseInt(inputValue, 10);
+        if (isNaN(value)) {
+            setMessage("Please enter a valid number to search.");
+            return;
+        }
+
+        try {
+            // Assume bstInstance.search returns the node if found, or null otherwise
+            const startTime = performance.now();
+            const foundNode = bstInstance.searchBFS(value);
+            const endTime = performance.now();
+
+            setBenchResult(endTime - startTime);
+
+            if (foundNode) {
+                setMessage(`Number ${value} found in the tree.`);
+                // Future enhancement: Add logic here to highlight the found node visually.
+            } else {
+                setMessage(`Number ${value} not found in the tree.`);
+            }
+            setInputValue(""); // Clear input after search
+        } catch (error) {
+            setMessage("An error occurred during search.");
+            console.error("Search error:", error);
+        }
     };
 
     const handleRemove = (): void => {
@@ -130,66 +235,184 @@ const BSTComponent: FC = () => {
             setMessage("Please enter a valid number to remove.");
             return;
         }
-        bstInstance.remove(value);
-        setMessage(`Number ${value} removed.`);
-        setHighlightedNode(value);
-        setInputValue("");
-        updateTreeVisualization();
-        setTimeout(() => setHighlightedNode(null), 2000);
+
+        try {
+            // We need to know if the remove operation actually did something.
+            // A simple way is to search first, though the remove method itself might indicate success/failure.
+            // Assuming bstInstance.remove handles the "not found" case gracefully internally.
+            const nodeExists = bstInstance.search(value); // Check if node exists before attempting removal
+
+            bstInstance.remove(value); // Attempt to remove the value from the BST instance
+            updateTreeVisualization(); // Update the visual representation regardless
+
+            if (nodeExists) {
+                setMessage(`Number ${value} removed successfully.`);
+            } else {
+                setMessage(`Number ${value} was not found in the tree.`);
+            }
+            setInputValue(""); // Clear the input field
+        } catch (error) {
+            setMessage(
+                error instanceof Error
+                    ? error.message
+                    : "Failed to remove number."
+            );
+            console.error("Remove error:", error);
+        }
     };
 
+    // --- Custom Node Rendering for react-d3-tree ---
+    /**
+     * Renders a custom SVG structure for each node in the tree.
+     * @param nodeDatum The data object for the node provided by react-d3-tree.
+     * @returns A JSX element representing the node visually (SVG group).
+     */
     const renderCustomNode = ({ nodeDatum }: { nodeDatum: NodeDatum }) => (
-        <motion.g
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ duration: 0.3 }}
-        >
+        <g>
+            {/* Circle representing the node */}
             <circle
                 r={NODE_RADIUS}
-                fill={nodeDatum.highlight ? "#FBBF24" : "#60A5FA"}
-                stroke="#2563EB"
+                fill="#60A5FA" // Tailwind blue-400
+                stroke="#2563EB" // Tailwind blue-600
                 strokeWidth="1"
             />
+            {/* Text displaying the node's value */}
             <text
-                fill="#1E3A8A"
-                fontSize="12"
+                fill="#1E3A8A" // Tailwind blue-900
+                fontSize="12" // Slightly smaller font for smaller radius
                 fontWeight="bold"
-                textAnchor="middle"
-                dy=".3em"
+                textAnchor="middle" // Center text horizontally
+                strokeWidth={0.5} // Thinner stroke for text
+                dy=".3em" // Center text vertically
             >
                 {nodeDatum.name}
             </text>
-        </motion.g>
+        </g>
     );
 
+    // --- Component Return JSX ---
     return (
         <div className="flex flex-col items-center max-w-4xl mx-auto my-8 px-4">
-            <div className="mb-6 flex space-x-2">
+            {/* Header Section */}
+            <header className="text-center mb-6">
+                <h1 className="text-4xl font-bold text-gray-800 mb-3">
+                    Interactive Binary Search Tree
+                </h1>
+                <p className="text-gray-600 max-w-2xl text-sm">
+                    Visualize a Binary Search Tree. Add, search, or remove
+                    nodes. Smaller values go left, larger values go right. No
+                    duplicates allowed (handled by `insert`).
+                </p>
+            </header>
+
+            {/* Control Panel Section */}
+            <div className="flex flex-wrap items-center justify-center gap-3 mb-6 p-4 bg-gray-100 rounded-lg shadow-sm w-full max-w-md">
                 <input
                     type="number"
                     value={inputValue}
                     onChange={handleInputChange}
                     placeholder="Enter number"
-                    className="border rounded px-3 py-2"
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    aria-label="Number input for BST operations"
                 />
-                <button onClick={handleAdd} className="bg-green-500 text-white px-4 py-2 rounded">Add</button>
-                <button onClick={handleSearch} className="bg-yellow-500 text-white px-4 py-2 rounded">Search</button>
-                <button onClick={handleRemove} className="bg-red-500 text-white px-4 py-2 rounded">Remove</button>
-                <button onClick={exportToJson} className="bg-yellow-500 text-white px-4 py-2 rounded">
+                <button
+                    onClick={handleAdd}
+                    className="px-4 py-2 bg-green-500 text-white font-medium rounded-md hover:bg-green-600 transition-colors duration-200"
+                >
+                    Add
+                </button>
+                <button
+                    onClick={handleSearchBFS}
+                    className="px-4 py-2 bg-yellow-500 text-white font-medium rounded-md hover:bg-yellow-600 transition-colors duration-200"
+                >
+                    Search Unoptimized
+                </button>
+                <button
+                    onClick={handleSearch}
+                    className="px-4 py-2 bg-yellow-500 text-white font-medium rounded-md hover:bg-yellow-600 transition-colors duration-200"
+                >
+                    Search
+                </button>
+                <button
+                    onClick={handleRemove}
+                    className="px-4 py-2 bg-red-500 text-white font-medium rounded-md hover:bg-red-600 transition-colors duration-200"
+                >
+                    Remove
+                </button>
+                <button
+                    onClick={exportToJson}
+                    className="bg-yellow-500 text-white px-4 py-2 rounded"
+                >
                     JSON
                 </button>
-                <button onClick={() => exportToCsv(parseInt(inputValue, 10), !!bstInstance.search(parseInt(inputValue, 10)))}
-                    className="bg-blue-500 text-white px-4 py-2 rounded">
+                <button
+                    onClick={() =>
+                        exportToCsv(
+                            parseInt(inputValue, 10),
+                            !!bstInstance.search(parseInt(inputValue, 10))
+                        )
+                    }
+                    className="bg-blue-500 text-white px-4 py-2 rounded"
+                >
                     Export to CSV
                 </button>
-
             </div>
-            {message && <p className="mb-4 text-sm text-gray-700">{message}</p>}
-            <div style={{ width: "100%", height: "500px" }}>
-                {treeData && (
-                    <Tree data={treeData} renderCustomNodeElement={renderCustomNode} />
+
+            {/* Message Display Area */}
+            {message && ( // Only render the message div if the message string is not empty
+                <div className="mb-4 text-center text-sm font-medium text-gray-700 h-5">
+                    {" "}
+                    {/* Fixed height to prevent layout shifts */}
+                    {message}
+                </div>
+            )}
+
+            {/* Message Display Area */}
+            {benchResult && ( // Only render the message div if the message string is not empty
+                <div className="mb-4 text-center text-sm font-medium text-gray-700 h-5">
+                    {" "}
+                    {/* Fixed height to prevent layout shifts */}
+                    {benchResult.toFixed(2) + " ms"}
+                </div>
+            )}
+
+            {/* Tree Visualization Section */}
+            <div className="w-full max-w-5xl h-96 md:h-[550px] bg-gray-50 border-2 border-gray-200 rounded-xl shadow-md flex items-center justify-center overflow-hidden relative">
+                {isLoading ? (
+                    // Loading Indicator
+                    <div className="flex flex-col items-center">
+                        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        <p className="mt-4 text-gray-600">Generating tree...</p>
+                    </div>
+                ) : treeData ? (
+                    // Tree Visualization using react-d3-tree
+                    <Tree
+                        data={treeData} // The data to visualize
+                        orientation="vertical" // Layout direction
+                        translate={{ x: CONTAINER_WIDTH / 2, y: 50 }} // Center the tree initially
+                        scaleExtent={{ min: 0.3, max: 2 }} // Zoom limits
+                        nodeSize={{ x: 60, y: 100 }} // Spacing between nodes (x: horizontal, y: vertical)
+                        pathFunc="elbow" // Style of links between nodes ('diagonal', 'elbow', 'straight')
+                        separation={{ siblings: 1.2, nonSiblings: 1.8 }} // Fine-tune spacing
+                        renderCustomNodeElement={renderCustomNode} // Use custom SVG for nodes
+                        zoom={0.7} // Initial zoom level
+                        dimensions={{ width: CONTAINER_WIDTH, height: 550 }} // Explicit dimensions help
+                        centeringTransitionDuration={300} // Smooth transition on centering
+                        shouldCollapseNeighborNodes={false} // Keep nodes expanded
+                    />
+                ) : (
+                    // Message when the tree is empty (e.g., after removing all nodes)
+                    <p className="text-gray-500">Tree is empty.</p>
                 )}
             </div>
+
+            {/* Button to Generate a New Random Tree */}
+            <button
+                onClick={generateRandomBST}
+                className="mt-6 px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors duration-200 flex items-center justify-center"
+            >
+                Generate New Random Tree
+            </button>
         </div>
     );
 };
