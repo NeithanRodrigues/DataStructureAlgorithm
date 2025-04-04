@@ -15,6 +15,9 @@ interface NodeDatum {
     __rd3t?: any; // Internal properties used by react-d3-tree
 }
 
+const NODE_RADIUS = 20;
+const MIN_NODES = 20;
+
 const BSTComponent: FC = () => {
     // State for the BST instance itself
     // We keep the BST instance in state to perform operations on it
@@ -117,7 +120,6 @@ const BSTComponent: FC = () => {
         }
 
         const foundNode = bstInstance.search(value);
-
         const searchResult = {
             searchedValue: value,
             found: !!foundNode,
@@ -137,9 +139,8 @@ const BSTComponent: FC = () => {
     };
 
     const exportToCsv = (value: number, found: boolean): void => {
-        const csvContent = `Searched Value,Found\n${value},${
-            found ? "Yes" : "No"
-        }`;
+        const csvContent = `Searched Value,Found\n${value},${found ? "Yes" : "No"
+            }`;
 
         const csvBlob = new Blob([csvContent], { type: "text/csv" });
         const downloadLink = document.createElement("a");

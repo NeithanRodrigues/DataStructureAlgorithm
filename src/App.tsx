@@ -12,6 +12,7 @@ function App() {
     <>
       <HeadBar />
       <NavBar />
+      <LinkedList />
       <SkipListVisualizer />
     </>
   )
