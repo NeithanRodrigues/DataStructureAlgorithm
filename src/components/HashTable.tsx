@@ -3,6 +3,7 @@ import {
     HashTable,
     HashingStrategy,
     CollisionResolution,
+    DELETED_MARKER,
 } from "../algorithm/HashTable";
 import "./HashTable.css";
 

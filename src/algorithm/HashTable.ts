@@ -27,7 +27,7 @@ class HashTableNode {
 }
 
 // Special marker for deleted slots in probing
-const DELETED_MARKER = { key: "__DELETED__", value: "__DELETED__" };
+export const DELETED_MARKER = { key: "__DELETED__", value: "__DELETED__" };
 
 // --- Main HashTable Class ---
 export class HashTable {
