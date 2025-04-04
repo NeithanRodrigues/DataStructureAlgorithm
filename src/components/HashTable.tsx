@@ -303,7 +303,21 @@ const HashTableComponent: React.FC = () => {
             <h2 className="text-2xl font-bold text-center text-indigo-700 mb-4">
                 Interactive Hash Table
             </h2>
-
+            <p>
+                A Hash Table is a data structure that associates keys with
+                values for efficient information retrieval. It uses a hash
+                function to compute an array index from a key, where the
+                corresponding value is stored. The primary benefit is speed: on
+                average, operations like insertion, search, and deletion can be
+                performed in constant time, close to O(1). However, downsides
+                include the occurrence of collisions (when different keys map to
+                the same index), which require resolution strategies like
+                chaining or probing, potentially degrading performance to O(n)
+                in the worst case. Furthermore, performance heavily depends on
+                the quality of the hash function and the chosen collision
+                resolution strategy, and resizing the table to maintain
+                efficiency can be a costly operation.
+            </p>
             {/* Configuration Controls */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-3 bg-white rounded shadow">
                 <div>
