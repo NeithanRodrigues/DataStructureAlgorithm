@@ -149,7 +149,7 @@ const LinkedListComponent: React.FC = () => {
 
     return (
         <div>
-            <div className="p-4 w-192 mx-auto mt-10">
+            <div className="p-4 w-192 mx-auto mt-15">
                 <h1 className="font-bold text-4xl">Linked List</h1>
                 <p className="mt-5">A linked list is a data structure where elements, called nodes, are connected using pointers. Each node consists of two main components: data, which holds the actual value, and a pointer, which references the next node in the sequence.
                 </p>
@@ -159,21 +159,21 @@ const LinkedListComponent: React.FC = () => {
                 </p>
 
             </div>
-            <div className="p-4 border rounded-lg shadow-lg w-192 mx-auto mt-5">
+            <div className="p-4 border border-gray-300 rounded-lg shadow-lg w-192 mx-auto mt-5">
                 <div className="flex mb-5 gap-2">
                     <input
                         type="number"
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
-                        className="border p-2 w-full"
+                        className="border border-gray-300 p-2 w-full"
                         placeholder="Insert a number"
                     />
-                    <button onClick={handleInsert} className="bg-[#02001f] text-white px-3 py-1 rounded">Insert</button>
+                    <button onClick={handleInsert} className="bg-[#02001f] text-white px-3 py-1 rounded border hover:bg-white hover:text-black">Insert</button>
                 </div>
                 <div className="flex gap-2 mb-3">
-                    <button onClick={handleSearchUnoptimized} className="bg-[#02001f] text-white px-3 py-1 rounded">Linear Search</button>
-                    <button onClick={handleSearchMTF} className="bg-[#02001f] text-white px-3 py-1 rounded">Move-To-Front</button>
-                    <button onClick={handleSearchTranspose} className="bg-[#02001f] text-white px-3 py-1 rounded">Transpose</button>
+                    <button onClick={handleSearchUnoptimized} className="bg-[#02001f] text-white px-3 py-1 rounded border hover:bg-white hover:text-black">Linear Search</button>
+                    <button onClick={handleSearchMTF} className="bg-[#02001f] text-white px-3 py-1 rounded border hover:bg-white hover:text-black">Move-To-Front</button>
+                    <button onClick={handleSearchTranspose} className="bg-[#02001f] text-white px-3 py-1 rounded border hover:bg-white hover:text-black">Transpose</button>
                 </div>
                 <div className="flex mb-3">
                     <strong>Result:</strong> {searchResult}
@@ -190,7 +190,7 @@ const LinkedListComponent: React.FC = () => {
                 <div className="mb-3">
                     <strong>{benchmark}</strong>
                 </div>
-                <div className="border p-3 rounded bg-gray-200 overflow-x-auto whitespace-nowrap">
+                <div className="border border-gray-300 p-3 rounded bg-gray-200 overflow-x-auto whitespace-nowrap">
                     <strong>List:</strong>
                     <div className="flex gap-2 mt-2 items-center">
                         <AnimatePresence>

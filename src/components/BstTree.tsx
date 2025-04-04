@@ -293,129 +293,125 @@ const BSTComponent: FC = () => {
 
     // --- Component Return JSX ---
     return (
-        <div className="flex flex-col items-center max-w-4xl mx-auto my-8 px-4">
-            {/* Header Section */}
-            <header className="text-center mb-6">
-                <h1 className="text-4xl font-bold text-gray-800 mb-3">
-                    Interactive Binary Search Tree
-                </h1>
-                <p className="text-gray-600 max-w-2xl text-sm">
-                    Visualize a Binary Search Tree. Add, search, or remove
-                    nodes. Smaller values go left, larger values go right. No
-                    duplicates allowed (handled by `insert`).
+        <div>
+            <div className="p-4 w-192 mx-auto mt-15">
+                <h1 className="font-bold text-4xl">Binary Search Tree</h1>
+                <p className="mt-5">
+                    A Binary Search Tree (BST) is a node-based binary tree data structure where each node has a comparable key (and associated value) and satisfies the property that the key in each node is greater than the keys in its left subtree and less than the keys in its right subtree.
                 </p>
-            </header>
-
-            {/* Control Panel Section */}
-            <div className="flex flex-wrap items-center justify-center gap-3 mb-6 p-4 bg-gray-100 rounded-lg shadow-sm w-full max-w-md">
-                <input
-                    type="number"
-                    value={inputValue}
-                    onChange={handleInputChange}
-                    placeholder="Enter number"
-                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    aria-label="Number input for BST operations"
-                />
-                <button
-                    onClick={handleAdd}
-                    className="px-4 py-2 bg-green-500 text-white font-medium rounded-md hover:bg-green-600 transition-colors duration-200"
-                >
-                    Add
-                </button>
-                <button
-                    onClick={handleSearchBFS}
-                    className="px-4 py-2 bg-yellow-500 text-white font-medium rounded-md hover:bg-yellow-600 transition-colors duration-200"
-                >
-                    Search Unoptimized
-                </button>
-                <button
-                    onClick={handleSearch}
-                    className="px-4 py-2 bg-yellow-500 text-white font-medium rounded-md hover:bg-yellow-600 transition-colors duration-200"
-                >
-                    Search
-                </button>
-                <button
-                    onClick={handleRemove}
-                    className="px-4 py-2 bg-red-500 text-white font-medium rounded-md hover:bg-red-600 transition-colors duration-200"
-                >
-                    Remove
-                </button>
-                <button
-                    onClick={exportToJson}
-                    className="bg-yellow-500 text-white px-4 py-2 rounded"
-                >
-                    JSON
-                </button>
-                <button
-                    onClick={() =>
-                        exportToCsv(
-                            parseInt(inputValue, 10),
-                            !!bstInstance.search(parseInt(inputValue, 10))
-                        )
-                    }
-                    className="bg-blue-500 text-white px-4 py-2 rounded"
-                >
-                    Export to CSV
-                </button>
+                <br />
+                <p>
+                    In this demo, you can insert values, perform search operations, and compare time performance for different search strategies.
+                </p>
             </div>
-
-            {/* Message Display Area */}
-            {message && ( // Only render the message div if the message string is not empty
-                <div className="mb-4 text-center text-sm font-medium text-gray-700 h-5">
-                    {" "}
-                    {/* Fixed height to prevent layout shifts */}
-                    {message}
-                </div>
-            )}
-
-            {/* Message Display Area */}
-            {benchResult && ( // Only render the message div if the message string is not empty
-                <div className="mb-4 text-center text-sm font-medium text-gray-700 h-5">
-                    {" "}
-                    {/* Fixed height to prevent layout shifts */}
-                    {benchResult.toFixed(2) + " ms"}
-                </div>
-            )}
-
-            {/* Tree Visualization Section */}
-            <div className="w-full max-w-5xl h-96 md:h-[550px] bg-gray-50 border-2 border-gray-200 rounded-xl shadow-md flex items-center justify-center overflow-hidden relative">
-                {isLoading ? (
-                    // Loading Indicator
-                    <div className="flex flex-col items-center">
-                        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                        <p className="mt-4 text-gray-600">Generating tree...</p>
-                    </div>
-                ) : treeData ? (
-                    // Tree Visualization using react-d3-tree
-                    <Tree
-                        data={treeData} // The data to visualize
-                        orientation="vertical" // Layout direction
-                        translate={{ x: CONTAINER_WIDTH / 2, y: 50 }} // Center the tree initially
-                        scaleExtent={{ min: 0.3, max: 2 }} // Zoom limits
-                        nodeSize={{ x: 60, y: 100 }} // Spacing between nodes (x: horizontal, y: vertical)
-                        pathFunc="elbow" // Style of links between nodes ('diagonal', 'elbow', 'straight')
-                        separation={{ siblings: 1.2, nonSiblings: 1.8 }} // Fine-tune spacing
-                        renderCustomNodeElement={renderCustomNode} // Use custom SVG for nodes
-                        zoom={0.7} // Initial zoom level
-                        dimensions={{ width: CONTAINER_WIDTH, height: 550 }} // Explicit dimensions help
-                        centeringTransitionDuration={300} // Smooth transition on centering
-                        shouldCollapseNeighborNodes={false} // Keep nodes expanded
+            <div className="p-4 border border-gray-300 rounded-lg shadow-lg w-192 mx-auto mt-5 mb-5">
+                <div className="flex gap-2 mb-3">
+                    <input
+                        type="number"
+                        value={inputValue}
+                        onChange={handleInputChange}
+                        className="border border-gray-300 p-2 w-full"
+                        placeholder="Digite um número"
                     />
-                ) : (
-                    // Message when the tree is empty (e.g., after removing all nodes)
-                    <p className="text-gray-500">Tree is empty.</p>
-                )}
-            </div>
+                    <button onClick={handleAdd} className="bg-[#02001f] text-white px-3 py-1 rounded border hover:bg-white hover:text-black">
+                        Insert
+                    </button>
+                </div>
+                <div className="flex gap-2 mb-3">
+                    <button onClick={handleSearch} className="bg-[#02001f] text-white px-3 py-1 rounded border hover:bg-white hover:text-black">
+                        Search (DFS)
+                    </button>
+                    <button onClick={handleSearchBFS} className="bg-[#02001f] text-white px-3 py-1 rounded border hover:bg-white hover:text-black">
+                        Search (BFS)
+                    </button>
+                    <button onClick={handleRemove} className="bg-[#02001f] text-white px-3 py-1 rounded border hover:bg-white hover:text-black">
+                        Remove
+                    </button>
+                </div>
+                <div className="mb-3 flex gap-2 items-center">
+                    <strong>Result:</strong> {message}
+                    <div className="flex gap-2 ml-auto">
+                        <button onClick={() => setTreeData(null)} className="text-white w-10 h-10 px-3 py-1 rounded">
+                            <img src="src/assets/delete.png" />
+                        </button>
+                        <button onClick={generateRandomBST} className="text-white w-10 h-10 px-3 py-1 rounded">
+                            <img src="src/assets/refresh.png" />
+                        </button>
+                    </div>
+                </div>
+                <div className="mb-3">
+                    <strong>{benchResult !== null ? `Benchmark: ${benchResult.toFixed(2)} ms` : ""}</strong>
+                </div>
+                <div className="border border-gray-400 p-3 rounded bg-gray-200 overflow-x-auto">
+                    <strong>BST Structure:</strong>
+                    <div className="h-[600px] w-full">
+                        {!isLoading && treeData && (
+                            <Tree
+                                data={[treeData]}
+                                orientation="vertical"
+                                translate={{ x: CONTAINER_WIDTH / 2, y: 50 }}
+                                nodeSize={{ x: 100, y: 100 }}
+                                zoomable={true}
+                                separation={{ siblings: 1.5, nonSiblings: 2 }}
+                                scaleExtent={{ min: 0.01, max: 10 }}
+                            />
+                        )}
+                    </div>
+                </div>
+                <div className="mt-4 flex gap-4 justify-end">
+                    <button
+                        onClick={() => {
+                            const value = parseInt(inputValue, 10);
+                            if (!isNaN(value)) {
+                                const found = !!bstInstance.search(value);
+                                const searchResult = { searchedValue: value, found: !!found };
 
-            {/* Button to Generate a New Random Tree */}
-            <button
-                onClick={generateRandomBST}
-                className="mt-6 px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors duration-200 flex items-center justify-center"
-            >
-                Generate New Random Tree
-            </button>
+                                const jsonBlob = new Blob([JSON.stringify(searchResult, null, 2)], { type: "application/json" });
+                                const downloadLink = document.createElement("a");
+                                downloadLink.href = URL.createObjectURL(jsonBlob);
+                                downloadLink.download = `search_result_${value}.json`;
+                                document.body.appendChild(downloadLink);
+                                downloadLink.click();
+                                document.body.removeChild(downloadLink);
+
+                                setMessage(`Search result exported for number ${value}.`);
+                            } else {
+                                setMessage("Please enter a valid number to export JSON.");
+                            }
+                        }}
+                        className="bg-[#02001f] text-white px-3 py-1 border-1 rounded hover:bg-white hover:text-black"
+                    >
+                        Export JSON
+                    </button>
+                    <button
+                        onClick={() => {
+                            const value = parseInt(inputValue, 10);
+                            if (!isNaN(value)) {
+                                const found = !!bstInstance.search(value);
+                                const csvContent = `Searched Value,Found\n${value},${found ? "Yes" : "No"}`;
+                                const csvBlob = new Blob([csvContent], { type: "text/csv" });
+                                const downloadLink = document.createElement("a");
+                                downloadLink.href = URL.createObjectURL(csvBlob);
+                                downloadLink.download = `search_result_${value}.csv`;
+                                document.body.appendChild(downloadLink);
+                                downloadLink.click();
+                                document.body.removeChild(downloadLink);
+
+                                setMessage(`Search result exported for number ${value}.`);
+                            } else {
+                                setMessage("Please enter a valid number to export CSV.");
+                            }
+                        }}
+                        className="bg-[#02001f] text-white px-3 py-1 border rounded hover:bg-white hover:text-black"
+                    >
+                        Export CSV
+                    </button>
+                </div>
+            </div>
         </div>
     );
+
+
 };
 
 export default BSTComponent;

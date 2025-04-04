@@ -113,7 +113,7 @@ const SkipListComponent: React.FC = () => {
 
     return (
         <div>
-            <div className="p-4 w-192 mx-auto mt-10">
+            <div className="p-4 w-192 mx-auto mt-15">
                 <h1 className="font-bold text-4xl">Skip List</h1>
                 <p className="mt-5">A Skip List is a data structure based on linked lists that enables efficient search, insertion, and deletion, serving as an alternative to balanced trees. It uses multiple levels of ordered lists where higher levels "skip" over nodes to speed up searches. The average time complexity for operations is O(log n), making it an efficient choice for dynamic ordered data storage.
                 </p>
@@ -122,24 +122,24 @@ const SkipListComponent: React.FC = () => {
                     In this demo, you can test both an unoptimized search (linear search) and an optimized search using Skip List, allowing you to compare their performance.
                 </p>
             </div>
-            <div className="p-4 border rounded-lg shadow-lg w-192 mx-auto mt-5 mb-5">
+            <div className="p-4 border border-gray-300 rounded-lg shadow-lg w-192 mx-auto mt-5 mb-5">
                 <div className="flex gap-2 mb-3">
                     <input
                         type="number"
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
-                        className="border p-2 w-full "
+                        className="border border-gray-300 p-2 w-full "
                         placeholder="Digite um número"
                     />
-                    <button onClick={handleInsert} className="bg-[#02001f] text-white px-3 py-1 rounded">
+                    <button onClick={handleInsert} className="bg-[#02001f] text-white px-3 py-1 rounded border hover:bg-white hover:text-black">
                         Inserir
                     </button>
                 </div>
                 <div className="flex gap-2 mb-3">
-                    <button onClick={handleSearch} className="bg-[#02001f] text-white px-3 py-1 rounded">
+                    <button onClick={handleSearch} className="bg-[#02001f] text-white px-3 py-1 rounded border hover:bg-white hover:text-black">
                         Skip List Search
                     </button>
-                    <button onClick={handleLinearSearch} className="bg-[#02001f] text-white px-3 py-1 rounded">
+                    <button onClick={handleLinearSearch} className="bg-[#02001f] text-white px-3 py-1 rounded border hover:bg-white hover:text-black">
                         Linear Search
                     </button>
 
@@ -161,7 +161,7 @@ const SkipListComponent: React.FC = () => {
                 <div className="mb-3 text-red-600">
                     <strong>{benchmarkLinear}</strong>
                 </div>
-                <div className="border p-3 rounded bg-gray-200 overflow-x-auto">
+                <div className="border border-gray-300 p-3 rounded bg-gray-200 overflow-x-auto">
                     <strong>Skip List Structure:</strong>
                     <div className="mt-2 space-y-2">
                         {Array.from({ length: list.getMaxLevel() }, (_, level) => (
