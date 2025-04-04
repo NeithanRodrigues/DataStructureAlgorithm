@@ -78,10 +78,10 @@ const LinkedListComponent: React.FC = () => {
     };
 
     const generateRandomList = () => {
-        list.clear(); // Limpa a lista antes de gerar nova
+        list.clear();
         const uniqueNumbers = new Set<number>();
 
-        while (uniqueNumbers.size < 5) { // Garante que sejam gerados 12 números únicos
+        while (uniqueNumbers.size < 1000) {
             const randomNum = Math.floor(Math.random() * 10000);
             uniqueNumbers.add(randomNum);
         }
@@ -92,7 +92,6 @@ const LinkedListComponent: React.FC = () => {
         setBenchmark("");
     };
 
-    // Apaga a lista sem gerar novos números
     const handleClearList = () => {
         list.clear();
         setElements([]);
@@ -100,16 +99,14 @@ const LinkedListComponent: React.FC = () => {
         setBenchmark("");
     };
 
-    // Gera uma nova lista aleatória (apaga a anterior e cria outra)
     const handleGenerateNewList = () => {
         generateRandomList();
     };
 
     useEffect(() => {
-        generateRandomList(); // Gera lista aleatória ao montar o componente
+        generateRandomList(); 
     }, []);
 
-    // Adiciona um número à lista
     const handleInsert = () => {
         if (!inputValue) return;
         const num = parseInt(inputValue);
@@ -118,7 +115,6 @@ const LinkedListComponent: React.FC = () => {
         setInputValue("");
     };
 
-    // Busca desotimizada com benchmark
     const handleSearchUnoptimized = () => {
         const num = parseInt(inputValue);
         const startTime = performance.now();
@@ -128,7 +124,6 @@ const LinkedListComponent: React.FC = () => {
         setBenchmark(`Time: ${(endTime - startTime).toFixed(2)} ms`);
     };
 
-    // Busca Move-To-Front (MTF) com benchmark
     const handleSearchMTF = () => {
         const num = parseInt(inputValue);
         const startTime = performance.now();
@@ -139,7 +134,6 @@ const LinkedListComponent: React.FC = () => {
         setBenchmark(`Time: ${(endTime - startTime).toFixed(2)} ms`);
     };
 
-    // Busca por transposição
     const handleSearchTranspose = () => {
         const num = parseInt(inputValue);
         const result = list.searchTranspose(num);

@@ -1,43 +1,31 @@
 import { useState, useEffect, FC, ChangeEvent, useCallback } from "react";
 import Tree from "react-d3-tree";
-import { BST, TreeNode } from "../algorithm/BstTree"; // Assuming this file exports BST and TreeNode
+import { BST, TreeNode } from "../algorithm/BstTree";
 
-// Define clear interfaces for react-d3-tree data structure
 interface TreeDataNode {
-    name: string; // Node value as string
-    children?: TreeDataNode[]; // Optional children array
+    name: string;
+    children?: TreeDataNode[];
 }
 
-// Interface for the node datum provided by react-d3-tree's renderCustomNodeElement
 interface NodeDatum {
     name: string;
     children?: NodeDatum[];
-    __rd3t?: any; // Internal properties used by react-d3-tree
+    __rd3t?: any;
 }
 
 const NODE_RADIUS = 20;
 const MIN_NODES = 20;
 
 const BSTComponent: FC = () => {
-    // State for the BST instance itself
-    // We keep the BST instance in state to perform operations on it
     const [bstInstance, setBstInstance] = useState<BST>(new BST());
-    // State for the data formatted for react-d3-tree visualization
     const [treeData, setTreeData] = useState<TreeDataNode | null>(null);
-    // State to manage loading status during tree generation
     const [isLoading, setIsLoading] = useState<boolean>(true);
-    // State for the input field value
     const [inputValue, setInputValue] = useState<string>("");
-    // State for displaying messages to the user (e.g., success, error, found/not found)
     const [message, setMessage] = useState<string>("");
     const [benchResult, setBenchResult] = useState<number | null>(null);
-
-    // Constants for tree container dimensions and node appearance
     const CONTAINER_WIDTH = 1200; // Approximate width for translation calculation
-    // const CONTAINER_HEIGHT = 700; // Not directly used in translate but good for reference
     const NODE_RADIUS = 20; // Smaller radius for potentially more nodes
 
-    // --- Core BST Interaction Functions ---
 
     /**
      * Converts the internal BST structure into the format required by react-d3-tree.
@@ -48,26 +36,19 @@ const BSTComponent: FC = () => {
     const convertToTreeFormat = (
         node: TreeNode | null
     ): TreeDataNode | null => {
-        if (!node) return null; // Base case: empty node/subtree
+        if (!node) return null;
 
-        // Recursively convert left and right children
         const children = [
             convertToTreeFormat(node.left),
             convertToTreeFormat(node.right),
-        ].filter(Boolean) as TreeDataNode[]; // Filter out null results (empty children)
+        ].filter(Boolean) as TreeDataNode[];
 
-        // Return the node structure for react-d3-tree
         return {
             name: node.value.toString(), // Node value becomes the 'name'
-            // Only include the 'children' property if there are actual children
             ...(children.length > 0 && { children }),
         };
     };
 
-    /**
-     * Updates the visual tree data based on the current state of the bstInstance.
-     * Should be called after any operation that modifies the BST (insert, remove).
-     */
     const updateTreeVisualization = useCallback(() => {
         // Convert the current BST root to the react-d3-tree format
         const formattedTree = convertToTreeFormat(bstInstance.getRoot());
@@ -76,10 +57,6 @@ const BSTComponent: FC = () => {
         // console.log("Tree visualization updated.");
     }, [bstInstance]); // Dependency: run only if bstInstance changes
 
-    /**
-     * Generates a new BST with a fixed number of unique random values.
-     * Clears the existing tree and populates a new one.
-     */
     const generateRandomBST = useCallback((): void => {
         setIsLoading(true);
         setMessage("");
